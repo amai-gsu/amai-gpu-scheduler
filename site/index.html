@@ -282,7 +282,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       <ol class="steps" id="signin-steps"></ol>
       <form id="signin-form" autocomplete="off">
         <label class="full"><span data-i18n="tokenLabel">Token</span><input id="token-input" type="password" placeholder="ghp_…" autocomplete="off"></label>
-        <label class="full"><span data-i18n="nameLabel">Your name (optional, shown instead of your GitHub username)</span><input id="name-input" type="text" maxlength="60" placeholder="Wei Hu" autocomplete="off"></label>
+        <label class="full"><span data-i18n="nameLabel">Your real name (shown on your bookings so everyone knows who holds the cards)</span><input id="name-input" type="text" maxlength="60" placeholder="e.g. Wei Hu" autocomplete="off" required></label>
         <div class="full actions"><button type="submit" class="primary" data-i18n="tokenSave">Sign in</button><span class="hint" data-i18n="tokenHint">Stored only in this browser. It is sent to api.github.com and nowhere else.</span></div>
       </form>
     </div>
@@ -464,7 +464,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       eNoPerm: 'GitHub refused the write. Your token needs the public_repo scope, and your account needs Write access on this repository.', eQuota: 'Storage is full. Ask the admin to clear old records.',
       eRate: 'Too many actions at once. Try again in a moment.', eFail: (m) => `Failed: ${m || 'unknown error'}`,
       updated: 'updated', nNoData: 'Could not load bookings.json from GitHub. Check the repository and try again.',
-      nameLabel: 'Your name (optional, shown instead of your GitHub username)',
+      nameLabel: 'Your real name (shown on your bookings so everyone knows who holds the cards)', vName: 'Please enter your real name.',
       roleViewer: 'Viewer', signIn: 'Sign in', signOut: 'Sign out', signInTitle: 'Sign in with a GitHub token (one time)', tokenLabel: 'Token', tokenSave: 'Sign in',
       tokenHint: 'Stored only in this browser. It is sent to api.github.com and nowhere else.',
       signInSteps: (url, repo) => [
@@ -1147,10 +1147,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   $('signin-form').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const token = $('token-input').value.trim(); if (!token) return;
+    const name = $('name-input').value.trim();
+    if (!name) { toast(t('vName')); $('name-input').focus(); return; }
     try {
       await signIn(token);
-      const name = $('name-input').value.trim();
-      if (name && state.canWrite) { try { await writeMembers(names => { names[state.myId] = name; return names; }, `Set display name for ${state.myId}`); } catch (e) { toast(errMsg(e)); } }
+      if (state.canWrite) { try { await writeMembers(names => { names[state.myId] = name; return names; }, `Set display name for ${state.myId}`); } catch (e) { toast(errMsg(e)); } }
       $('token-input').value = ''; $('name-input').value = ''; $('signin-panel').hidden = true;
       toast(state.canWrite ? t('tSignedIn', state.myId) : t('tSignedInRO', state.myId));
       await loadAll();

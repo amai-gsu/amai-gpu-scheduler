@@ -15,8 +15,8 @@ the moment you submit it, and the page refuses windows where the cards are alrea
 3. Run with the cards you were given, e.g. `CUDA_VISIBLE_DEVICES=0,2`. Ids match `nvidia-smi` on
    the node.
 4. Done early? Click **Release early** on your booking so others can use the cards.
-5. The page shows the Name from your GitHub profile. If you have none, type your name in the
-   sign-in box (below the token); sign in again any time to change it.
+5. The sign-in box also asks for your real name; it is shown on your bookings so everyone knows
+   who holds the cards. Sign in again any time to change it.
 
 You need **Write** access to this repository to book. Ask a lab admin to add you under
 Settings → Collaborators.
