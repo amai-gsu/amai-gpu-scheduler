@@ -953,7 +953,15 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     const area = line + ` L${pts[n - 1][0].toFixed(1)} ${yOf(0)} L${pts[0][0].toFixed(1)} ${yOf(0)} Z`;
     const grid = [0, 50, 100].map(p => `<line x1="${PL}" x2="${W - PR}" y1="${yOf(p)}" y2="${yOf(p)}" stroke="var(--line)" stroke-width="1"/><text x="${PL - 6}" y="${yOf(p) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${p}%</text>`).join('');
     const tickEvery = n > 40 ? 14 : 7;
-    const ticks = s.daily.map((d, i) => (i % tickEvery === 0 || i === n - 1) ? `<text x="${x(i)}" y="${H - 6}" text-anchor="middle" font-size="10" fill="var(--muted)">${esc(fmtShort(d.day))}</text>` : '').join('');
+    // regular ticks every week (or two); the last day only when it is not crowding the previous tick
+    const lastRegular = Math.floor((n - 1) / tickEvery) * tickEvery;
+    const ticks = s.daily.map((d, i) => {
+      const regular = i % tickEvery === 0;
+      const last = i === n - 1 && n - 1 - lastRegular >= tickEvery / 2;
+      if (!regular && !last) return '';
+      const anchor = i === 0 ? 'start' : (i === n - 1 ? 'end' : 'middle');
+      return `<text x="${x(i)}" y="${H - 6}" text-anchor="${anchor}" font-size="10" fill="var(--muted)">${esc(fmtShort(d.day))}</text>`;
+    }).join('');
     const chart = `<div class="line-chart" id="daily-chart">
       <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t('daily'))}">
         ${grid}${ticks}
