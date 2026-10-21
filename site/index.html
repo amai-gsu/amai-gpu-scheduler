@@ -266,7 +266,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   <div class="topbar">
     <div class="brand">
       <h1 data-i18n="title">Lab GPU Scheduler</h1>
-      <span class="muted" id="today-label"></span>
     </div>
     <div class="right">
       <div class="me" id="me">
@@ -410,7 +409,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return iso(d); };
   const daysBetween = (a, b) => Math.round((parse(b) - parse(a)) / 86400000);
   const TODAY = iso(new Date());
-  $('today-label').textContent = TODAY;
 
   // ---------- i18n ----------
   const I18N = {
@@ -659,7 +657,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     state.sha = b.sha; state.requests = (b.data.bookings || []).map(normalize);
     state.nodesSha = n.sha; state.gpus = (n.data || []).slice().sort((a, c) => a.name.localeCompare(c.name));
     state.generatedAt = new Date().toISOString();
-    $('today-label').textContent = `${TODAY} · ${t('updated')} ${state.generatedAt.replace('T', ' ').slice(11, 16)}`;
   }
   function normalize(b) {
     let status = b.cancelled ? 'rejected' : 'approved';
