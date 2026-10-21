@@ -370,7 +370,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
             <textarea id="f-purpose" required data-i18n-placeholder="fPurposePh" placeholder="e.g. ACL submission, fine-tuning for the main table"></textarea>
           </label>
           <div class="full checks">
-            <label class="check"><input id="f-share" type="checkbox"> <span data-i18n="fShare">Can share: others may run on these cards too (I'm not using all the VRAM)</span></label>
+            <label class="check"><input id="f-share" type="checkbox"> <span data-i18n="fShare">Can share: others may run on these cards too (I'm not using all the memory)</span></label>
             <label class="check"><input id="f-preempt" type="checkbox"> <span data-i18n="fPreempt">Can be preempted: if someone needs the cards urgently, they may kill my job</span></label>
           </div>
           <div class="full actions">
@@ -433,7 +433,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       fPurpose: 'What for (project or deadline)',
       fPurposePh: 'e.g. ACL submission, fine-tuning for the main table',
       fModel: 'Model size', fVram: 'Expected memory per card (GB)', vModel: 'Say how big the model is (e.g. 7B).', vVram: 'Give a rough memory estimate per card in GB.', perCard: 'GB/card',
-      fShare: 'Can share: others may run on these cards too (I’m not using all the VRAM)', fPreempt: 'Can be preempted: if someone needs the cards urgently, they may kill my job',
+      fShare: 'Can share: others may run on these cards too (I’m not using all the memory)', fPreempt: 'Can be preempted: if someone needs the cards urgently, they may kill my job',
       tagShare: 'shareable', tagPreempt: 'preemptible',
       submit: 'Book', tabAll: 'All bookings', tabGpus: 'Nodes', fGpuIds: 'Pick the cards you want for these dates', vGpuIds: 'Pick at least one card.', pickFree: 'free', pickShare: 'shareable with the holder', pickTaken: 'taken', pickWith: (n) => `with ${n}`, pickSummary: (n) => `${n} selected`,
       vNoRoom: (n, g) => `Only ${n} card${n === 1 ? '' : 's'} free on ${g} in that window. Pick other dates or fewer cards.`, vTaken: (taken, free) => `GPU ${taken} already booked in that window; free: ${free}.`,
@@ -468,8 +468,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       adminSearchPh: 'Search people by name to add as admin…', alreadyAdmin: 'already admin', remove: 'Remove', tAdminAdded: 'Admin added', tAdminRemoved: 'Admin removed',
       reopen: 'Undo decision, review again', confirmReopen: 'Confirm undo?',
       addNode: 'Add a node', gName: 'Node name', gNamePh: 'e.g. node-01 / 4090-server', gModel: 'GPU model', gModelPh: 'e.g. A100 / RTX 4090',
-      gCards: 'Cards', gMem: 'VRAM per card (GB)', gNote: 'Note', gNotePh: 'e.g. IP 10.0.0.12, NLP group has priority', add: 'Add',
-      thNode: 'Node', thConfig: 'Config', thMem: 'VRAM', thStatus: 'Status', noNodesTable: 'No nodes yet.',
+      gCards: 'Cards', gMem: 'Memory per card (GB)', gNote: 'Note', gNotePh: 'e.g. IP 10.0.0.12, NLP group has priority', add: 'Add',
+      thNode: 'Node', thConfig: 'Config', thMem: 'Memory', thStatus: 'Status', noNodesTable: 'No nodes yet.',
       restore: 'Mark available', markMaint: 'Mark maintenance', del: 'Delete', confirmDel: 'Confirm delete?',
       tSubmitted: 'Booked. The cards are yours for those dates.', tApproved: 'Approved', tRejected: 'Rejected', tWithdrawn: 'Withdrawn', tReleased: 'Released',
       tReopened: 'Back in the pending queue', tAdded: (n) => `Added node ${n}`, tDeleted: 'Node deleted',
