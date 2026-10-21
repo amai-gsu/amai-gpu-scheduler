@@ -183,6 +183,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .decide { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto auto; gap: 6px; }
 @media (max-width: 480px) { .decide { grid-template-columns: minmax(0, 1fr); } }
 .conflict { font-size: 12px; color: var(--warn); }
+.checks { display: flex; flex-direction: column; gap: 6px; }
+.check { flex-direction: row; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--fg); cursor: pointer; }
+.check input { width: auto; margin-top: 3px; }
+.pill.tag { background: var(--accent-soft); color: var(--accent); }
+.tl .bar.soft { background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(255,255,255,.28) 6px 9px); }
 
 /* timeline (gantt) */
 .tl-wrap { overflow-x: auto; }
@@ -344,9 +349,13 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
           <label class="full"><span data-i18n="fGpuIds">GPU ids (optional)</span>
             <input id="f-gpuids" type="text" class="mono" placeholder="0,2" data-i18n-placeholder="fGpuIdsPh">
           </label>
-          <label class="full"><span data-i18n="fPurpose">What for (experiment, expected VRAM, can it be preempted?)</span>
-            <textarea id="f-purpose" required data-i18n-placeholder="fPurposePh" placeholder="e.g. LoRA fine-tune of LLaMA-7B, ~40 GB VRAM, fine to run overnight"></textarea>
+          <label class="full"><span data-i18n="fPurpose">What for (experiment, expected VRAM)</span>
+            <textarea id="f-purpose" required data-i18n-placeholder="fPurposePh" placeholder="e.g. LoRA fine-tune of LLaMA-7B, ~40 GB VRAM"></textarea>
           </label>
+          <div class="full checks">
+            <label class="check"><input id="f-share" type="checkbox"> <span data-i18n="fShare">Can share: others may run on these cards too (I'm not using all the VRAM)</span></label>
+            <label class="check"><input id="f-preempt" type="checkbox"> <span data-i18n="fPreempt">Can be preempted: if someone needs the cards urgently, they may kill my job</span></label>
+          </div>
           <div class="full actions">
             <button type="submit" class="primary" id="f-submit" data-i18n="submit">Book</button>
           </div>
@@ -405,8 +414,10 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       nodesHint: 'Each square is one card, colored by who holds it. Click a node to filter the timeline below; change the date to see any day.',
       clusterTitle: 'Whole cluster', freeCards: (n) => `${n} free`, maintCards: (n) => `${n} in maintenance`, overAlloc: 'over-allocated',
       myRequests: 'My bookings', fNode: 'Node', fCards: 'Cards', fStart: 'Start', fEnd: 'End',
-      fPurpose: 'What for (experiment, expected VRAM, can it be preempted?)',
-      fPurposePh: 'e.g. LoRA fine-tune of LLaMA-7B, ~40 GB VRAM, fine to run overnight',
+      fPurpose: 'What for (experiment, expected VRAM)',
+      fPurposePh: 'e.g. LoRA fine-tune of LLaMA-7B, ~40 GB VRAM',
+      fShare: 'Can share: others may run on these cards too (I’m not using all the VRAM)', fPreempt: 'Can be preempted: if someone needs the cards urgently, they may kill my job',
+      tagShare: 'shareable', tagPreempt: 'preemptible',
       submit: 'Book', tabAll: 'All bookings', tabGpus: 'Nodes', fGpuIds: 'GPU ids (optional)', fGpuIdsPh: 'e.g. 0,2 — empty takes the lowest free cards',
       vNoRoom: (n, g) => `Only ${n} card${n === 1 ? '' : 's'} free on ${g} in that window. Pick other dates or fewer cards.`, vTaken: (taken, free) => `GPU ${taken} already booked in that window; free: ${free}.`,
       schedule: 'Allocations', showAllNodes: 'Show all nodes', viewTimeline: 'Timeline', viewList: 'List',
@@ -785,7 +796,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     return `<div class="req ${esc(r.status)}" data-rid="${esc(r.id)}">
       <div class="stripe"></div>
       <div class="main">
-        <div class="line1">${personHTML(profiles[r.uid], r.uid)}<span class="pill ${esc(r.status)}">${esc(tStatus(r.status))}</span></div>
+        <div class="line1">${personHTML(profiles[r.uid], r.uid)}<span class="pill ${esc(r.status)}">${esc(tStatus(r.status))}</span>${r.share ? `<span class="pill tag">${esc(t('tagShare'))}</span>` : ''}${r.preempt ? `<span class="pill tag">${esc(t('tagPreempt'))}</span>` : ''}</div>
         <div class="purpose">${esc(r.purpose)}</div>
         <div class="meta">${parts.join('')}</div>
         ${noteHTML}
@@ -855,13 +866,14 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
           if (!(state.slots[b.id] || []).includes(i)) continue;
           const s = Math.max(0, daysBetween(wStart, b.start)), e = Math.min(state.tlDays - 1, daysBetween(wStart, b.end));
           const label = nameOf(profiles, b.uid);
-          barsHTML += `<div class="bar ${b.uid === state.myId ? 'mine' : ''}" style="left:${s * DW + 2}px;width:${(e - s + 1) * DW - 4}px;top:3px;background:${colors[b.uid]}" title="GPU ${i} · ${esc(label)} ×${b.count} · ${esc(b.start)} → ${esc(b.end)}&#10;${esc(b.purpose)}">${esc(label)}</div>`;
+          const flags = [b.share ? t('tagShare') : '', b.preempt ? t('tagPreempt') : ''].filter(Boolean).join(', ');
+          barsHTML += `<div class="bar ${b.uid === state.myId ? 'mine' : ''} ${b.share || b.preempt ? 'soft' : ''}" style="left:${s * DW + 2}px;width:${(e - s + 1) * DW - 4}px;top:3px;background:${colors[b.uid]}" title="GPU ${i} · ${esc(label)} ×${b.count} · ${esc(b.start)} → ${esc(b.end)}${flags ? ' · ' + esc(flags) : ''}&#10;${esc(b.purpose)}">${esc(label)}${flags ? ' ·' : ''}</div>`;
         }
         rows += `<div class="row ${i >= node.cards ? 'over' : ''}" style="height:${ROW}px">${barsHTML}</div>`;
       }
     }
     const legendIds = [...new Set(inWindow.map(r => r.uid))].sort();
-    const legend = legendIds.length ? `<div class="legend">${legendIds.map(u => `<span><i style="background:${colors[u]}"></i>${esc(nameOf(profiles, u))}${u === state.myId ? ` (${esc(t('you'))})` : ''}</span>`).join('')}</div>` : '';
+    const legend = legendIds.length ? `<div class="legend"><span><i style="background:var(--muted);background-image:repeating-linear-gradient(135deg,transparent 0 3px,rgba(255,255,255,.35) 3px 5px)"></i>${esc(t('tagShare'))} / ${esc(t('tagPreempt'))}</span>${legendIds.map(u => `<span><i style="background:${colors[u]}"></i>${esc(nameOf(profiles, u))}${u === state.myId ? ` (${esc(t('you'))})` : ''}</span>`).join('')}</div>` : '';
     $('sched-timeline').innerHTML = nodes.length ? `
       <div class="hint mono">${esc(fmtShort(wStart))} → ${esc(fmtShort(wEnd))}</div>
       <div class="tl-wrap"><div class="tl" style="--dw:${DW}px;width:${150 + state.tlDays * DW}px">
@@ -1020,7 +1032,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       slots = idx.sort((x, y) => x - y);
     }
     const btn = $('f-submit'); btn.disabled = true;
-    const item = { id: 'b_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), uid: state.myId, gpuId, count, start, end, purpose, slots, createdAt: new Date().toISOString() };
+    const item = { id: 'b_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), uid: state.myId, gpuId, count, start, end, purpose, slots, share: $('f-share').checked, preempt: $('f-preempt').checked, createdAt: new Date().toISOString() };
     try {
       const ok = await writeBookings(list => {
         // re-check against the freshest file so two people cannot double-book
@@ -1031,7 +1043,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         if (slots) { const taken = slots.filter(i => !free.includes(i)); if (taken.length) { toast(t('vTaken', taken.join(','), free.join(','))); return false; } }
         list.unshift(item); return list;
       }, `Book ${g.name} ×${count} ${start}→${end} (${state.myId})`);
-      if (ok) { $('f-purpose').value = ''; $('f-gpuids').value = ''; $('f-count').value = '1'; state.picking = false; toast(t('tSubmitted')); }
+      if (ok) { $('f-purpose').value = ''; $('f-gpuids').value = ''; $('f-count').value = '1'; $('f-share').checked = false; $('f-preempt').checked = false; state.picking = false; toast(t('tSubmitted')); }
     } catch (e) { toast(errMsg(e)); }
     btn.disabled = false; render();
   }

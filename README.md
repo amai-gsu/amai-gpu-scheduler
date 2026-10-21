@@ -10,7 +10,8 @@ the moment you submit it, and the page refuses windows where the cards are alrea
 1. Open the link above and click **Sign in** (top right). The page walks you through creating a
    GitHub token (classic, `public_repo` scope only). Paste it once; your browser remembers it.
 2. Pick a node, click a start and an end day on the calendar (the numbers are free cards per day),
-   say what it's for, optionally type the exact GPU ids you want (`0,2`), and click **Book**.
+   say what it's for, tick **Can share** / **Can be preempted** if that applies, optionally type
+   the exact GPU ids you want (`0,2`), and click **Book**.
 3. Run with the cards you were given, e.g. `CUDA_VISIBLE_DEVICES=0,2`. Ids match `nvidia-smi` on
    the node.
 4. Done early? Click **Release early** on your booking so others can use the cards.
