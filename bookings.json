@@ -1,6 +1,23 @@
 {
   "bookings": [
     {
+      "id": "b_mvikhnoxctfw1",
+      "uid": "prehoke",
+      "gpuId": "ada6000",
+      "count": 3,
+      "start": "2026-11-01",
+      "end": "2026-11-15",
+      "purpose": "Experiment",
+      "slots": [
+        0,
+        1,
+        2
+      ],
+      "share": false,
+      "preempt": false,
+      "createdAt": "2026-10-21T20:31:09.873Z"
+    },
+    {
       "id": "b_mvikfiyu421v7",
       "uid": "prehoke",
       "gpuId": "ada6000",
