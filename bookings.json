@@ -1,6 +1,24 @@
 {
   "bookings": [
     {
+      "id": "b_mviorinj33im1",
+      "uid": "xiaolong-shawn",
+      "gpuId": "lab2",
+      "count": 2,
+      "start": "2026-10-21",
+      "end": "2026-10-31",
+      "purpose": "Hybrid VLM conversion study (mechanistic phase): memory-snapshot / forked-query evaluation of attention-KV vs Mamba-state contributions in converted 3.1B VLMs. Inference-only sweeps (no training), resumable jobs. Prep for conference submission.",
+      "modelSize": "3.1B (TinyLLaVA-Phi-2 hybrid variants)",
+      "vramGb": 12,
+      "slots": [
+        2,
+        3
+      ],
+      "share": true,
+      "preempt": false,
+      "createdAt": "2026-10-21T22:30:48.367Z"
+    },
+    {
       "id": "b_mvikhnoxctfw1",
       "uid": "prehoke",
       "gpuId": "ada6000",
