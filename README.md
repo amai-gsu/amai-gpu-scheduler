@@ -1,43 +1,41 @@
 # Lab GPU Scheduler
 
-A GitHub-native GPU booking board. A booking is a GitHub issue (no approval step), and the
-dashboard (cluster map, per-card timeline, calendar picker, usage statistics) is a static page on
-GitHub Pages that GitHub Actions rebuilds whenever an issue changes.
+## 🔗 https://amai-gsu.github.io/amai-gpu-scheduler/
+
+Book GPU cards on the lab's nodes straight from the page. No approval step: a booking takes effect
+the moment you submit it, and the page refuses windows where the cards are already taken.
+
+## For lab members
+
+1. Open the link above and click **Sign in** (top right). The page walks you through creating a
+   GitHub token that can only write to this one repository (Contents: read and write). Paste it
+   once; your browser remembers it.
+2. Pick a node, click a start and an end day on the calendar (the numbers are free cards per day),
+   say what it's for, optionally type the exact GPU ids you want (`0,2`), and click **Book**.
+3. Run with the cards you were given, e.g. `CUDA_VISIBLE_DEVICES=0,2`. Ids match `nvidia-smi` on
+   the node.
+4. Done early? Click **Release early** on your booking so others can use the cards.
+
+You need **Write** access to this repository to book. Ask a lab admin to add you under
+Settings → Collaborators.
+
+## For admins
+
+- **Add a member**: Settings → Collaborators and teams → Add people → role **Write**.
+- **Cancel someone's booking**: sign in as a repository Maintainer/Admin; the **All bookings** tab
+  shows a *Cancel booking* button.
+- **Add or change nodes**: edit [`nodes.json`](nodes.json) and commit. Fields: `id`, `name`,
+  `model`, `cards`, `memoryGb`, `status` (`available` or `maintenance`), `note`.
+- **Fix a booking by hand**: edit [`bookings.json`](bookings.json); every booking is one object
+  with `uid`, `gpuId`, `count`, `start`, `end` (inclusive dates), optional `slots`, and
+  `closedAt` / `cancelled` once it ends.
 
 ## How it works
 
-| Action | How |
-|---|---|
-| Book GPUs | Open an issue with the **GPU booking** form (the dashboard's calendar pre-fills it and refuses windows with no free cards) |
-| Pick specific cards | Fill the form's optional **GPU ids** field (e.g. `0,2`), or comment `/gpu 0,2` later; empty = lowest free cards |
-| Add a note | Comment `/note low priority, may be preempted` |
-| Release early | Close the issue |
-| Cancel someone's booking | An admin adds the label `rejected` |
-| Add or change nodes | Edit `nodes.json` and commit |
-| Who is an admin | Anyone with write/maintain/admin permission on this repo |
+The page is static (GitHub Pages, deployed by the workflow in `.github/workflows/pages.yml`).
+All data lives in two JSON files in this repository, which the page reads and writes through the
+GitHub Contents API using each member's own token. Every booking is therefore a commit, so
+`git log bookings.json` is the audit trail. Writes are compare-and-swap on the file's SHA, so two
+people booking at the same moment cannot overwrite each other.
 
-Members type their GitHub username once in the dashboard's top-right corner to highlight their own
-requests (it is only remembered in their browser; nothing is enforced client-side, GitHub does the
-permission checks).
-
-## One-time setup
-
-1. **Settings → Pages → Build and deployment → Source: GitHub Actions.**
-2. **Settings → Actions → General → Workflow permissions: Read repository contents** (default is fine;
-   the workflow only needs `issues: read` and `pages: write`).
-3. Create the labels `gpu-request` and `rejected` (Issues → Labels → New label).
-4. Give lab members access to the repo so they can open issues (private repo: add them as
-   collaborators with *Read* or *Triage*; admins get *Write*).
-5. Push to `main`, or run the **Build and deploy GPU scheduler** workflow once by hand.
-   The dashboard is then at `https://<org>.github.io/<repo>/`.
-
-## Files
-
-- `site/index.html` – the dashboard (reads `site/data.json`)
-- `scripts/build_data.py` – turns issues into `site/data.json`
-- `nodes.json` – the GPU nodes
-- `.github/ISSUE_TEMPLATE/gpu-request.yml` – the request form; keep its field labels in sync with the parser
-- `.github/workflows/pages.yml` – rebuild + deploy on issue events and pushes
-
-Dates are inclusive calendar days. Card ids in the dashboard match `nvidia-smi` indices on the node,
-so a member assigned GPU 2 runs with `CUDA_VISIBLE_DEVICES=2`.
+The repository is public, so bookings (GitHub usernames, dates, purposes) are visible to anyone.

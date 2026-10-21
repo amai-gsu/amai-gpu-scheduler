@@ -239,6 +239,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .picker .results { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.12); display: flex; flex-direction: column; overflow: hidden; }
 .picker .hit { display: flex; align-items: center; gap: 8px; border: none; border-radius: 0; text-align: left; padding: 6px 10px; }
 .picker .hit img { width: 20px; height: 20px; border-radius: 50%; }
+.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.steps code { font-family: var(--font-mono); background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+.steps a { color: var(--accent); }
 .table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .table th, .table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 .table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
@@ -260,14 +263,24 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       <div class="me" id="me">
         <img id="me-avatar" alt="" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'/>">
         <div class="who">
-          <label class="inline" style="gap:4px"><span data-i18n="ghUser">GitHub user</span> <input id="me-login" type="text" placeholder="octocat" style="width:120px"></label>
-          <span class="role" id="me-role" data-i18n="roleGuest">Guest</span>
+          <b id="me-name" data-i18n="notSignedIn">Not signed in</b>
+          <span class="actions" style="gap:6px"><span class="role" id="me-role" data-i18n="roleGuest">Guest</span><button class="link" id="signin-btn" type="button" data-i18n="signIn">Sign in</button></span>
         </div>
       </div>
     </div>
   </div>
 
   <div class="notice" id="notice" hidden></div>
+  <div class="panel" id="signin-panel" hidden>
+    <header><h2 data-i18n="signInTitle">Sign in with a GitHub token</h2><button class="link" id="signin-close" type="button">✕</button></header>
+    <div class="body">
+      <ol class="steps" id="signin-steps"></ol>
+      <form id="signin-form" autocomplete="off">
+        <label class="full"><span data-i18n="tokenLabel">Token</span><input id="token-input" type="password" placeholder="github_pat_…" autocomplete="off"></label>
+        <div class="full actions"><button type="submit" class="primary" data-i18n="tokenSave">Sign in</button><span class="hint" data-i18n="tokenHint">Stored only in this browser. It is sent to api.github.com and nowhere else.</span></div>
+      </form>
+    </div>
+  </div>
 
   <section>
     <div class="section-title">
@@ -372,6 +385,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 <script>
 (() => {
   'use strict';
+  const REPO = 'amai-gsu/amai-gpu-scheduler';   // the repository that holds bookings.json and nodes.json
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -389,12 +403,12 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     en: {
       title: 'Lab GPU Scheduler', identifying: 'Identifying you…', roleGuest: 'Guest', roleMember: 'Member', roleAdmin: 'Admin',
       nodes: 'GPU nodes', queryDate: 'Date', backToToday: 'Back to today',
-      nodesHint: 'Each square is one card, colored by who holds it. Click a node to filter the timeline below; change the date to see any day. Data refreshes about a minute after any issue changes.',
+      nodesHint: 'Each square is one card, colored by who holds it. Click a node to filter the timeline below; change the date to see any day.',
       clusterTitle: 'Whole cluster', freeCards: (n) => `${n} free`, maintCards: (n) => `${n} in maintenance`, overAlloc: 'over-allocated',
       myRequests: 'My bookings', fNode: 'Node', fCards: 'Cards', fStart: 'Start', fEnd: 'End',
       fPurpose: 'What for (experiment, expected VRAM, can it be preempted?)',
       fPurposePh: 'e.g. LoRA fine-tune of LLaMA-7B, ~40 GB VRAM, fine to run overnight',
-      submit: 'Book on GitHub', tabAll: 'All bookings', tabGpus: 'Nodes', fGpuIds: 'GPU ids (optional)', fGpuIdsPh: 'e.g. 0,2 — empty takes the lowest free cards',
+      submit: 'Book', tabAll: 'All bookings', tabGpus: 'Nodes', fGpuIds: 'GPU ids (optional)', fGpuIdsPh: 'e.g. 0,2 — empty takes the lowest free cards',
       vNoRoom: (n, g) => `Only ${n} card${n === 1 ? '' : 's'} free on ${g} in that window. Pick other dates or fewer cards.`, vTaken: (taken, free) => `GPU ${taken} already booked in that window; free: ${free}.`,
       schedule: 'Allocations', showAllNodes: 'Show all nodes', viewTimeline: 'Timeline', viewList: 'List',
       calSelected: 'Selected range', calFull: 'No free cards', calHint: 'Numbers are free cards on that node. Click a start day, then an end day.',
@@ -410,10 +424,10 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       noNodesAdmin: 'No GPU nodes yet. Add your first machine under “Manage nodes”.',
       noNodes: 'No GPU nodes yet. Once an admin adds nodes, each machine’s usage will show here.',
       count: (n) => `${n}`, approvedCount: (n) => `${n} approved`,
-      signInToRequest: 'Type your GitHub username in the top-right corner to see your own requests.',
+      signInToRequest: 'Sign in (top right) to see your bookings and make new ones.',
       noMine: 'You have no bookings yet. Pick a node and dates above.',
       withdraw: 'Withdraw', confirmWithdraw: 'Confirm withdraw?', release: 'Release early', confirmRelease: 'Confirm release?',
-      releaseHint: 'Done early? Close the issue on GitHub to release the cards.',
+      releaseHint: 'Done early? Release the cards so others can use them.',
       noSchedule: 'No approved allocations in this window.', noScheduleList: 'No approved allocations that are still running.',
       noPending: 'Nothing waiting for approval.', noHistory: 'No decided requests yet.',
       nodeDeleted: '(node removed)', submittedOn: 'submitted', admin: 'Admin', member: 'Member', me: 'Me', other: 'Others', you: 'you',
@@ -423,27 +437,34 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       notePh: 'Note (optional), e.g. low priority, may be preempted', approve: 'Approve', reject: 'Reject',
       slotsPh: (free) => `GPU ids (optional)${free ? ', free: ' + free : ''}`, slotsHint: 'Which physical cards to give, e.g. 0,2. Leave empty to assign the lowest free cards automatically.',
       vSlots: (n, max) => `Enter exactly ${n} distinct GPU id${n === 1 ? '' : 's'} between 0 and ${max}, e.g. 0,2.`, auto: 'auto',
-      admins: 'Admins', adminsHint: 'Admins (write access on the repo) can cancel a booking with the rejected label and edit nodes.json.', noAdmins: 'No other admins yet.',
+      admins: 'Admins', adminsHint: 'Anyone with Write access on the repository can book. Repository maintainers and admins can also cancel other people’s bookings.', noAdmins: 'No other admins yet.',
       adminSearchPh: 'Search people by name to add as admin…', alreadyAdmin: 'already admin', remove: 'Remove', tAdminAdded: 'Admin added', tAdminRemoved: 'Admin removed',
       reopen: 'Undo decision, review again', confirmReopen: 'Confirm undo?',
       addNode: 'Add a node', gName: 'Node name', gNamePh: 'e.g. node-01 / 4090-server', gModel: 'GPU model', gModelPh: 'e.g. A100 / RTX 4090',
       gCards: 'Cards', gMem: 'VRAM per card (GB)', gNote: 'Note', gNotePh: 'e.g. IP 10.0.0.12, NLP group has priority', add: 'Add',
       thNode: 'Node', thConfig: 'Config', thMem: 'VRAM', thStatus: 'Status', noNodesTable: 'No nodes yet.',
       restore: 'Mark available', markMaint: 'Mark maintenance', del: 'Delete', confirmDel: 'Confirm delete?',
-      tSubmitted: 'Submitted. Waiting for admin approval.', tApproved: 'Approved', tRejected: 'Rejected', tWithdrawn: 'Withdrawn', tReleased: 'Released',
+      tSubmitted: 'Booked. The cards are yours for those dates.', tApproved: 'Approved', tRejected: 'Rejected', tWithdrawn: 'Withdrawn', tReleased: 'Released',
       tReopened: 'Back in the pending queue', tAdded: (n) => `Added node ${n}`, tDeleted: 'Node deleted',
-      vSignIn: 'Sign in to claude.ai first.', vPickNode: 'Pick a node.', vCards: 'Request at least 1 card.', vTooMany: (n, c) => `${n} only has ${c} cards.`,
+      vSignIn: 'Sign in with your GitHub token first (top right).', vPickNode: 'Pick a node.', vCards: 'Request at least 1 card.', vTooMany: (n, c) => `${n} only has ${c} cards.`,
       vDates: 'End date cannot be before start date.', vPurpose: 'Say what the GPUs are for.', vGpuForm: 'Fill in node name, model and card count.',
-      eNoPerm: 'You do not have write access. Ask the admin to make you a Contributor.', eQuota: 'Storage is full. Ask the admin to clear old records.',
+      eNoPerm: 'GitHub refused the write. Your token needs Contents: Read and write on this repository, and your account needs Write access.', eQuota: 'Storage is full. Ask the admin to clear old records.',
       eRate: 'Too many actions at once. Try again in a moment.', eFail: (m) => `Failed: ${m || 'unknown error'}`,
-      ghUser: 'GitHub user', updated: 'updated', nNoData: 'Could not load data.json. Has the Pages workflow run yet?',
-      withdrawHint: 'Close the issue on GitHub to withdraw.', reviewOnGitHub: 'Review on GitHub', tOpenedIssue: 'Opened the booking form on GitHub in a new tab. Submit it there; the cards are yours once the issue exists.',
-      decideHint: (free) => `Add the label approved or rejected on the issue.${free ? ` To pin cards, comment "/gpu ${free}".` : ''} Comment "/note …" to add a note.`,
-      editNodes: 'Edit nodes.json', editNodesHint: 'Nodes live in nodes.json in the repo; edit it and commit, the page rebuilds.',
-      unparsable: 'Issues the scheduler could not read', unparsableHint: 'The form fields are missing or the dates are not YYYY-MM-DD. Ask the author to edit the issue.',
+      updated: 'updated', nNoData: 'Could not load bookings.json from GitHub. Check the repository and try again.',
+      roleViewer: 'Viewer', signIn: 'Sign in', signOut: 'Sign out', signInTitle: 'Sign in with a GitHub token', tokenLabel: 'Token', tokenSave: 'Sign in',
+      tokenHint: 'Stored only in this browser. It is sent to api.github.com and nowhere else.',
+      signInSteps: (url, repo) => [
+        `Open <a href="${url}" target="_blank" rel="noopener">GitHub → New fine-grained token</a> (sign in to GitHub if asked).`,
+        `Under <b>Repository access</b> choose <b>Only select repositories</b> and pick <code>${repo}</code>.`,
+        `Under <b>Permissions → Repository permissions</b> set <b>Contents</b> to <b>Read and write</b>. Leave everything else as is.`,
+        `Set an expiration you like (1 year is fine), click <b>Generate token</b>, copy it, and paste it below.`],
+      tSignedIn: (u) => `Signed in as ${u}`, tSignedInRO: (u) => `Signed in as ${u}, but you cannot write to this repository. Ask an admin to add you as a collaborator with Write access.`,
+      eBadToken: 'GitHub rejected the token. Generate a new one and sign in again.',
+      cancel: 'Cancel booking', confirmCancel: 'Confirm cancel?', tCancelled: 'Booking cancelled',
+      editNodes: 'Edit nodes.json', editNodesHint: 'Nodes live in nodes.json in the repository; edit and commit it there.',
       nNoDb: 'Could not reach the shared data; the page is read-only for now. Sign in to claude.ai and reload.',
-      nSignIn: 'Sign in to claude.ai to submit requests. Signed-out visitors can only view allocations.',
-      nViewOnly: 'You have view-only access. Ask the admin to set you as a Contributor in the share settings; then you can submit requests.',
+      nSignIn: 'Sign in with a GitHub token (top right) to book cards. Without signing in you can only view.',
+      nViewOnly: 'Your GitHub account cannot write to this repository. Ask an admin to add you as a collaborator with Write access.',
       nRevoked: 'Your access changed. Reload the page.',
       stats: 'Usage statistics', last30: 'Last 30 days', last90: 'Last 90 days', thisMonth: 'This month',
       utilization: 'Cluster utilization', cardDays: 'Card-days used', reqApproved: 'Approved', reqRejected: 'Rejected', reqPending: 'Pending now',
@@ -460,7 +481,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       myRequests: '我的预订', fNode: '目标节点', fCards: '卡数', fStart: '开始', fEnd: '结束',
       fPurpose: '用途说明（跑什么实验、预计显存、能否被抢占等）',
       fPurposePh: '例如：LLaMA-7B LoRA 微调，约 40GB 显存，可以晚上跑',
-      submit: '去 GitHub 预订', tabAll: '全部预订', tabGpus: '节点', fGpuIds: 'GPU 编号（可选）', fGpuIdsPh: '例如 0,2，留空则自动分配编号最小的空闲卡',
+      submit: '预订', tabAll: '全部预订', tabGpus: '节点', fGpuIds: 'GPU 编号（可选）', fGpuIdsPh: '例如 0,2，留空则自动分配编号最小的空闲卡',
       vNoRoom: (n, g) => `${g} 在这段时间只剩 ${n} 张卡空闲，请换日期或减少卡数。`, vTaken: (taken, free) => `GPU ${taken} 在这段时间已被预订；空闲的是 ${free}。`,
       schedule: '分配情况', showAllNodes: '显示全部节点', viewTimeline: '时间线', viewList: '列表',
       calSelected: '已选区间', calFull: '无空闲卡', calHint: '数字是该节点当天的空闲卡数。先点开始日，再点结束日。',
@@ -476,10 +497,10 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       noNodesAdmin: '还没有登记任何 GPU 节点。在「节点管理」里添加第一台机器。',
       noNodes: '还没有登记任何 GPU 节点。等管理员添加节点后，这里会显示每台机器的占用情况。',
       count: (n) => `${n} 条`, approvedCount: (n) => `${n} 条已批准`,
-      signInToRequest: '在右上角填上你的 GitHub 用户名，就能看到自己的申请。',
+      signInToRequest: '在右上角登录后就能看到和创建自己的预订。',
       noMine: '你还没有预订过。在上面选节点和日期即可。',
       withdraw: '撤回申请', confirmWithdraw: '确认撤回？', release: '提前释放', confirmRelease: '确认释放？',
-      releaseHint: '提前跑完了？在 GitHub 上关闭 issue 就能释放。',
+      releaseHint: '提前跑完了就释放，让别人能用。',
       noSchedule: '这段时间内没有已批准的分配。', noScheduleList: '目前没有已批准、尚未结束的分配。',
       noPending: '没有待审批的申请。', noHistory: '还没有处理过的申请。',
       nodeDeleted: '（节点已删除）', submittedOn: '提交于', admin: '管理员', member: '成员', me: '我', other: '其他人', you: '你',
@@ -489,27 +510,34 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       notePh: '备注（可选），例如：优先级低，随时可能被抢占', approve: '批准', reject: '拒绝',
       slotsPh: (free) => `GPU 编号（可选）${free ? '，空闲：' + free : ''}`, slotsHint: '指定分给哪几张卡，例如 0,2。留空则自动分配编号最小的空闲卡。',
       vSlots: (n, max) => `请填写 ${n} 个不重复的 GPU 编号（0 到 ${max}），例如 0,2。`, auto: '自动',
-      admins: '管理员', adminsHint: '管理员（仓库 write 权限）可以给 issue 加 rejected 标签取消预订，以及修改 nodes.json。', noAdmins: '还没有其他管理员。',
+      admins: '管理员', adminsHint: '仓库里有 Write 权限的人都可以预订；仓库的 Maintainer / Admin 还可以取消别人的预订。', noAdmins: '还没有其他管理员。',
       adminSearchPh: '按姓名搜索，添加为管理员…', alreadyAdmin: '已是管理员', remove: '移除', tAdminAdded: '已添加管理员', tAdminRemoved: '已移除管理员',
       reopen: '撤销决定，重新审批', confirmReopen: '确认撤销决定？',
       addNode: '添加节点', gName: '节点名称', gNamePh: '例如 node-01 / 4090-server', gModel: 'GPU 型号', gModelPh: '例如 A100 / RTX 4090',
       gCards: '卡数', gMem: '单卡显存 (GB)', gNote: '备注', gNotePh: '例如：IP 10.0.0.12，优先给 NLP 组', add: '添加',
       thNode: '节点', thConfig: '配置', thMem: '显存', thStatus: '状态', noNodesTable: '还没有节点。',
       restore: '恢复可用', markMaint: '标记维护', del: '删除', confirmDel: '确认删除？',
-      tSubmitted: '已提交，等待管理员审批。', tApproved: '已批准', tRejected: '已拒绝', tWithdrawn: '已撤回', tReleased: '已释放',
+      tSubmitted: '预订成功，这些卡在这段时间归你。', tApproved: '已批准', tRejected: '已拒绝', tWithdrawn: '已撤回', tReleased: '已释放',
       tReopened: '已退回待审批', tAdded: (n) => `已添加节点 ${n}`, tDeleted: '已删除节点',
-      vSignIn: '请先登录 claude.ai。', vPickNode: '请选择一个节点。', vCards: '卡数至少为 1。', vTooMany: (n, c) => `${n} 只有 ${c} 张卡。`,
+      vSignIn: '请先在右上角用 GitHub token 登录。', vPickNode: '请选择一个节点。', vCards: '卡数至少为 1。', vTooMany: (n, c) => `${n} 只有 ${c} 张卡。`,
       vDates: '结束日期不能早于开始日期。', vPurpose: '请填写用途说明。', vGpuForm: '请填写节点名称、型号和卡数。',
-      eNoPerm: '没有权限写入，请让管理员把你设为 Contributor（协作者）。', eQuota: '存储已满，请联系管理员清理旧记录。',
+      eNoPerm: 'GitHub 拒绝写入。token 需要这个仓库的 Contents 读写权限，账号需要 Write 协作者权限。', eQuota: '存储已满，请联系管理员清理旧记录。',
       eRate: '操作太频繁，请稍后再试。', eFail: (m) => `操作失败：${m || '未知错误'}`,
-      ghUser: 'GitHub 用户', updated: '更新于', nNoData: '读不到 data.json。Pages 工作流跑过了吗？',
-      withdrawHint: '在 GitHub 上关闭这个 issue 即可撤回。', reviewOnGitHub: '去 GitHub 审批', tOpenedIssue: '已在新标签页打开 GitHub 的预订表单，提交后这些卡就是你的了。',
-      decideHint: (free) => `在 issue 上加标签 approved 或 rejected。${free ? `要指定卡号，评论 "/gpu ${free}"。` : ''}评论 "/note …" 可以加备注。`,
-      editNodes: '编辑 nodes.json', editNodesHint: '节点配置在仓库的 nodes.json 里，改完提交后页面会自动重建。',
-      unparsable: '无法解析的 issue', unparsableHint: '表单字段缺失或日期不是 YYYY-MM-DD 格式，请让作者编辑 issue。',
+      updated: '更新于', nNoData: '无法从 GitHub 读取 bookings.json，请检查仓库后重试。',
+      roleViewer: '只读', signIn: '登录', signOut: '退出', signInTitle: '用 GitHub token 登录', tokenLabel: 'Token', tokenSave: '登录',
+      tokenHint: '只保存在这个浏览器里，只会发送给 api.github.com。',
+      signInSteps: (url, repo) => [
+        `打开 <a href="${url}" target="_blank" rel="noopener">GitHub → 新建 fine-grained token</a>（如果提示就先登录 GitHub）。`,
+        `在 <b>Repository access</b> 选 <b>Only select repositories</b>，选中 <code>${repo}</code>。`,
+        `在 <b>Permissions → Repository permissions</b> 里把 <b>Contents</b> 设为 <b>Read and write</b>，其他不用动。`,
+        `选一个过期时间（1 年即可），点 <b>Generate token</b>，复制后粘贴到下面。`],
+      tSignedIn: (u) => `已登录：${u}`, tSignedInRO: (u) => `已登录 ${u}，但你没有这个仓库的写权限。请管理员把你加为 Write 权限的协作者。`,
+      eBadToken: 'GitHub 拒绝了这个 token，请重新生成后再登录。',
+      cancel: '取消预订', confirmCancel: '确认取消？', tCancelled: '已取消预订',
+      editNodes: '编辑 nodes.json', editNodesHint: '节点配置在仓库的 nodes.json 里，直接在 GitHub 上编辑提交即可。',
       nNoDb: '无法连接到共享数据，暂时只能查看。请在 claude.ai 中登录后重试。',
-      nSignIn: '请登录 claude.ai 后再提交申请；未登录时只能查看分配情况。',
-      nViewOnly: '你目前只有查看权限。请管理员在分享设置里把你设为 Contributor（协作者），之后就能提交申请。',
+      nSignIn: '在右上角用 GitHub token 登录后即可预订；未登录只能查看。',
+      nViewOnly: '你的 GitHub 账号没有这个仓库的写权限。请管理员把你加为 Write 权限的协作者。',
       nRevoked: '你的访问权限已变更，请刷新页面。',
       stats: '使用统计', last30: '近 30 天', last90: '近 90 天', thisMonth: '本月',
       utilization: '集群利用率', cardDays: '已用卡·天', reqApproved: '已批准', reqRejected: '已拒绝', reqPending: '当前待审',
@@ -542,8 +570,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   const mondayOf = (s) => { const d = parse(s); const dow = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dow); return iso(d); };
 
   const state = {
-    myId: null, isAdmin: false, repo: '', generatedAt: '',
-    gpus: [], requests: [], problems: [],
+    myId: null, isAdmin: false, canWrite: false, token: null, repo: REPO, generatedAt: '',
+    gpus: [], requests: [], sha: null, nodesSha: null,
     adminTab: 'all', confirmKey: null,
     queryDay: TODAY, filterGpu: null, colors: {},
     noticeKey: null, noticeKind: '', booted: false,
@@ -622,24 +650,82 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   }
   const nameOf = (profiles, uid) => (profiles[uid] && profiles[uid].name) || uid || t('member');
   const personHTML = (p, uid) => `<span class="person">${p ? `<img src="${esc(p.avatarUrl)}" alt="" loading="lazy">` : ''}<span>${esc(nameOf({ [uid]: p }, uid))}</span></span>`;
-  // Admin = a collaborator with write access on the repo (data.json lists them).
+  // Identity comes from a GitHub token the person pastes once; GitHub tells us who they are and what they may do.
   function refreshAdmin() {
-    state.isAdmin = !!state.myId && state.admins.map(a => a.toLowerCase()).includes(state.myId.toLowerCase());
     $('admin-panel').hidden = false;
     renderRole();
   }
   function renderRole() {
+    $('me-name').textContent = state.myId || t('notSignedIn');
     const roleEl = $('me-role');
-    roleEl.textContent = state.isAdmin ? t('roleAdmin') : (state.myId ? t('roleMember') : t('roleGuest'));
+    roleEl.textContent = state.isAdmin ? t('roleAdmin') : (state.canWrite ? t('roleMember') : (state.myId ? t('roleViewer') : t('roleGuest')));
     roleEl.className = 'role' + (state.isAdmin ? ' admin' : '');
     $('me-avatar').src = state.myId ? `https://github.com/${encodeURIComponent(state.myId)}.png?size=64` : "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'/>";
+    $('signin-btn').textContent = state.myId ? t('signOut') : t('signIn');
+    $('f-submit').disabled = !state.canWrite;
   }
-  // GitHub URLs the page sends people to
+  // ---------- GitHub Contents API ----------
   const repoUrl = () => `https://github.com/${state.repo}`;
-  const newIssueUrl = (fields) => {
-    const q = new URLSearchParams({ template: 'gpu-request.yml', ...fields });
-    return `${repoUrl()}/issues/new?${q.toString()}`;
+  const API = 'https://api.github.com';
+  async function gh(path, opts = {}) {
+    const headers = { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(opts.headers || {}) };
+    if (state.token) headers.Authorization = `Bearer ${state.token}`;
+    const res = await fetch(`${API}${path}`, { ...opts, headers, cache: 'no-store' });
+    if (!res.ok) { const err = new Error(`${res.status}`); err.status = res.status; try { err.body = await res.json(); } catch {} throw err; }
+    return res.status === 204 ? null : res.json();
+  }
+  const b64enc = (str) => btoa(String.fromCharCode(...new TextEncoder().encode(str)));
+  const b64dec = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\n/g, '')), c => c.charCodeAt(0)));
+  async function readFile(path) {
+    const f = await gh(`/repos/${state.repo}/contents/${path}?ref=main`);
+    return { sha: f.sha, data: JSON.parse(b64dec(f.content)) };
+  }
+  async function loadAll() {
+    const [b, n] = await Promise.all([readFile('bookings.json'), readFile('nodes.json')]);
+    state.sha = b.sha; state.requests = (b.data.bookings || []).map(normalize);
+    state.nodesSha = n.sha; state.gpus = (n.data || []).slice().sort((a, c) => a.name.localeCompare(c.name));
+    state.generatedAt = new Date().toISOString();
+    $('today-label').textContent = `${TODAY} · ${t('updated')} ${state.generatedAt.replace('T', ' ').slice(11, 16)}`;
+  }
+  function normalize(b) {
+    let status = b.cancelled ? 'rejected' : 'approved';
+    if (b.closedAt) status = status === 'approved' ? 'released' : 'withdrawn';
+    return { ...b, status, decision: { status: b.cancelled ? 'rejected' : 'approved', slots: b.slots || null, note: b.note || '', decidedBy: b.cancelledBy || null } };
+  }
+  // Write bookings.json with a compare-and-swap on its sha; on conflict reload and retry once.
+  async function writeBookings(mutate, message) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const cur = await readFile('bookings.json');
+      const list = mutate((cur.data.bookings || []).map(b => ({ ...b })));
+      if (list === false) return false;
+      try {
+        const res = await gh(`/repos/${state.repo}/contents/bookings.json`, { method: 'PUT', body: JSON.stringify({ message, sha: cur.sha, branch: 'main', content: b64enc(JSON.stringify({ bookings: list }, null, 2) + '\n') }) });
+        state.sha = res.content.sha; state.requests = list.map(normalize); return true;
+      } catch (e) { if (e.status !== 409 || attempt) throw e; }
+    }
+  }
+  const errMsg = (e) => {
+    if (!e || !e.status) return t('eFail', e && e.message);
+    if (e.status === 401) return t('eBadToken');
+    if (e.status === 403 || e.status === 404) return t('eNoPerm');
+    return t('eFail', `HTTP ${e.status}`);
   };
+  // sign in: validate the token, learn login + permission on this repo
+  async function signIn(token) {
+    state.token = token;
+    const me = await gh('/user');
+    const repo = await gh(`/repos/${state.repo}`);
+    state.myId = me.login;
+    const perm = repo.permissions || {};
+    state.canWrite = !!(perm.push || perm.maintain || perm.admin);
+    state.isAdmin = !!(perm.maintain || perm.admin);
+    try { localStorage.setItem('gpu-token', token); } catch {}
+  }
+  function signOut() {
+    state.token = null; state.myId = null; state.canWrite = false; state.isAdmin = false;
+    try { localStorage.removeItem('gpu-token'); } catch {}
+    refreshAdmin(); render();
+  }
 
   // ---------- render ----------
   let renderSeq = 0;
@@ -798,8 +884,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     if (!mine.length) { list.innerHTML = `<div class="empty">${esc(t('noMine'))}</div>`; return; }
     list.innerHTML = mine.map(r => {
       let extra = '';
-      if (r.status === 'pending') extra = `<div class="actions"><a class="sm btn" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(t('withdraw'))} ↗</a><span class="hint">${esc(t('withdrawHint'))}</span></div>`;
-      else if (r.status === 'approved') extra = `<div class="actions"><a class="sm btn" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(t('release'))} ↗</a><span class="hint">${esc(t('releaseHint'))}</span></div>`;
+      const ck = 'mine:' + r.id;
+      if (r.status === 'approved') extra = `<div class="actions"><button class="sm" data-act="release" data-rid="${esc(r.id)}">${esc(state.confirmKey === ck ? t('confirmRelease') : (r.start > TODAY ? t('withdraw') : t('release')))}</button><span class="hint">${esc(t('releaseHint'))}</span></div>`;
       return reqCard(r, profiles, { extra });
     }).join('');
   }
@@ -975,7 +1061,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
     if (state.adminTab === 'all') {
       const decided = reqs;
-      body.innerHTML = decided.length ? `<div class="reqs">` + decided.map(r => reqCard(r, profiles, { extra: `<div class="actions"><a class="sm btn" href="${esc(r.url)}" target="_blank" rel="noopener">#${r.number} ↗</a></div>` })).join('') + `</div>` : `<div class="empty">${esc(t('noHistory'))}</div>`;
+      body.innerHTML = decided.length ? `<div class="reqs">` + decided.map(r => {
+        const ck = 'cancel:' + r.id;
+        const extra = state.isAdmin && r.status === 'approved' && r.uid !== state.myId ? `<div class="actions"><button class="sm bad" data-act="cancel" data-rid="${esc(r.id)}">${esc(state.confirmKey === ck ? t('confirmCancel') : t('cancel'))}</button></div>` : '';
+        return reqCard(r, profiles, { extra });
+      }).join('') + `</div>` : `<div class="empty">${esc(t('noHistory'))}</div>`;
       return;
     }
     const rows = state.gpus.map(g => `<tr>
@@ -984,19 +1074,18 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         <td class="mono">${g.memoryGb ? esc(g.memoryGb) + 'GB' : '—'}</td>
         <td>${g.status === 'maintenance' ? `<span class="pill">${esc(t('maintenance'))}</span>` : `<span class="pill approved">${esc(t('available'))}</span>`}</td>
       </tr>`).join('');
-    const problems = state.problems.length ? `<div><h3>${esc(t('unparsable'))}</h3><div class="hint">${esc(t('unparsableHint'))}</div><div class="legend">${state.problems.map(p => `<a href="${esc(p.url)}" target="_blank" rel="noopener">#${p.number} ↗</a>`).join('')}</div></div>` : '';
     body.innerHTML = `
       <div class="table-wrap">
         ${state.gpus.length ? `<table class="table"><thead><tr><th>${esc(t('thNode'))}</th><th>${esc(t('thConfig'))}</th><th>${esc(t('thMem'))}</th><th>${esc(t('thStatus'))}</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">${esc(t('noNodesTable'))}</div>`}
       </div>
       <div class="actions"><a class="sm btn" href="${esc(repoUrl())}/edit/main/nodes.json" target="_blank" rel="noopener">${esc(t('editNodes'))} ↗</a><span class="hint">${esc(t('editNodesHint'))}</span></div>
-      <div><h3>${esc(t('admins'))}</h3><div class="legend">${state.admins.map(u => `<span><img src="https://github.com/${encodeURIComponent(u)}.png?size=32" alt="" style="width:16px;height:16px;border-radius:50%">${esc(u)}</span>`).join('')}</div><p class="hint">${esc(t('adminsHint'))}</p></div>
-      ${problems}`;
+      <p class="hint">${esc(t('adminsHint'))}</p>`;
   }
 
-  // ---------- actions: everything goes through GitHub ----------
-  function onSubmitRequest(ev) {
+  // ---------- actions: write straight to bookings.json ----------
+  async function onSubmitRequest(ev) {
     ev.preventDefault();
+    if (!state.canWrite) { toast(t('vSignIn')); return; }
     const gpuId = $('f-gpu').value, count = parseInt($('f-count').value, 10), start = $('f-start').value, end = $('f-end').value, purpose = $('f-purpose').value.trim();
     const g = gpuById(gpuId);
     if (!g) { toast(t('vPickNode')); return; }
@@ -1004,21 +1093,54 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     if (count > g.cards) { toast(t('vTooMany', g.name, g.cards)); return; }
     if (!start || !end || end < start) { toast(t('vDates')); return; }
     if (!purpose) { toast(t('vPurpose')); return; }
-    const probe = { id: '__new', gpuId, count, start, end };
-    const freeIdx = freeCardsFor(g, probe);
-    if (freeIdx.length < count) { toast(t('vNoRoom', freeIdx.length, g.name)); return; }
     const gpuids = $('f-gpuids').value.trim();
+    let slots = null;
     if (gpuids) {
       const idx = gpuids.split(/[\s,，、]+/).filter(Boolean).map(Number);
       const ok = idx.length === count && idx.every(i => Number.isInteger(i) && i >= 0 && i < g.cards) && new Set(idx).size === idx.length;
       if (!ok) { toast(t('vSlots', count, g.cards - 1)); return; }
-      const taken = idx.filter(i => !freeIdx.includes(i));
-      if (taken.length) { toast(t('vTaken', taken.join(','), freeIdx.join(','))); return; }
+      slots = idx.sort((x, y) => x - y);
     }
-    const url = newIssueUrl({ node: g.name, cards: String(count), start, end, gpuids, purpose, title: `[GPU] ${g.name} ×${count} ${start} → ${end}` });
-    window.open(url, '_blank', 'noopener');
-    toast(t('tOpenedIssue'));
+    const btn = $('f-submit'); btn.disabled = true;
+    const item = { id: 'b_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), uid: state.myId, gpuId, count, start, end, purpose, slots, createdAt: new Date().toISOString() };
+    try {
+      const ok = await writeBookings(list => {
+        // re-check against the freshest file so two people cannot double-book
+        state.requests = list.map(normalize);
+        state.slots = {}; for (const n of state.gpus) Object.assign(state.slots, assignSlots(n, allRequests()));
+        const free = freeCardsFor(g, item);
+        if (free.length < count) { toast(t('vNoRoom', free.length, g.name)); return false; }
+        if (slots) { const taken = slots.filter(i => !free.includes(i)); if (taken.length) { toast(t('vTaken', taken.join(','), free.join(','))); return false; } }
+        list.unshift(item); return list;
+      }, `Book ${g.name} ×${count} ${start}→${end} (${state.myId})`);
+      if (ok) { $('f-purpose').value = ''; $('f-gpuids').value = ''; $('f-count').value = '1'; state.picking = false; toast(t('tSubmitted')); }
+    } catch (e) { toast(errMsg(e)); }
+    btn.disabled = false; render();
   }
+  function needsConfirm(key) {
+    if (state.confirmKey === key) { state.confirmKey = null; return false; }
+    state.confirmKey = key; render();
+    setTimeout(() => { if (state.confirmKey === key) { state.confirmKey = null; render(); } }, 4000);
+    return true;
+  }
+  document.addEventListener('click', async (ev) => {
+    const b = ev.target.closest('button[data-act]'); if (!b) return;
+    const act = b.dataset.act, rid = b.dataset.rid;
+    try {
+      if (act === 'release') {
+        if (needsConfirm('mine:' + rid)) return;
+        b.disabled = true;
+        await writeBookings(list => { const it = list.find(x => x.id === rid && x.uid === state.myId); if (!it) return false; it.closedAt = new Date().toISOString(); return list; }, `Release ${rid} (${state.myId})`);
+        toast(t('tReleased'));
+      } else if (act === 'cancel') {
+        if (needsConfirm('cancel:' + rid)) return;
+        b.disabled = true;
+        await writeBookings(list => { const it = list.find(x => x.id === rid); if (!it) return false; it.cancelled = true; it.cancelledBy = state.myId; it.closedAt = new Date().toISOString(); return list; }, `Cancel ${rid} (${state.myId})`);
+        toast(t('tCancelled'));
+      }
+    } catch (e) { toast(errMsg(e)); }
+    render();
+  });
   // cards on this node free for the request's whole window (for the approval hint)
   function freeCardsFor(g, r) {
     const used = new Set();
@@ -1036,32 +1158,39 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   const toggleGpu = (el) => { const id = el.dataset.gpu; state.filterGpu = state.filterGpu === id ? null : id; render(); };
   $('gpu-grid').addEventListener('click', (ev) => { const el = ev.target.closest('.gpu[data-gpu]'); if (el) toggleGpu(el); });
   $('gpu-grid').addEventListener('keydown', (ev) => { const el = ev.target.closest('.gpu[data-gpu]'); if (el && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); toggleGpu(el); } });
-  // who am I: a GitHub login typed once, remembered in this browser
-  const loginEl = $('me-login');
-  try { loginEl.value = localStorage.getItem('gpu-login') || ''; } catch {}
-  const applyLogin = () => { state.myId = loginEl.value.trim().replace(/^@/, '') || null; try { localStorage.setItem('gpu-login', state.myId || ''); } catch {} refreshAdmin(); render(); };
-  loginEl.addEventListener('change', applyLogin);
+  // ---------- sign-in UI ----------
+  const tokenUrl = () => `https://github.com/settings/personal-access-tokens/new?name=gpu-scheduler&description=Lab+GPU+scheduler+bookings&target_name=${encodeURIComponent(state.repo.split('/')[0])}`;
+  function openSignIn() {
+    $('signin-steps').innerHTML = t('signInSteps', tokenUrl(), state.repo).map(x => `<li>${x}</li>`).join('');
+    $('signin-panel').hidden = false; $('token-input').focus();
+  }
+  $('signin-btn').addEventListener('click', () => { if (state.myId) signOut(); else openSignIn(); });
+  $('signin-close').addEventListener('click', () => { $('signin-panel').hidden = true; });
+  $('signin-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const token = $('token-input').value.trim(); if (!token) return;
+    try {
+      await signIn(token);
+      $('token-input').value = ''; $('signin-panel').hidden = true;
+      toast(state.canWrite ? t('tSignedIn', state.myId) : t('tSignedInRO', state.myId));
+      await loadAll();
+    } catch (e) { state.token = null; toast(errMsg(e)); }
+    refreshAdmin(); render();
+  });
 
   // ---------- boot ----------
   (async () => {
     applyStatic();
-    state.myId = loginEl.value.trim() || null;
     render();
-    try {
-      const res = await fetch('data.json', { cache: 'no-store' });
-      if (!res.ok) throw new Error(res.status);
-      const data = await res.json();
-      state.repo = data.repo || ''; state.generatedAt = data.generatedAt || '';
-      state.gpus = (data.nodes || []).slice().sort((a, b) => a.name.localeCompare(b.name));
-      state.requests = data.requests || [];
-      state.admins = data.admins || [];
-      state.problems = data.problems || [];
-      $('today-label').textContent = `${TODAY} · ${t('updated')} ${state.generatedAt.replace('T', ' ').slice(0, 16)}`;
-    } catch (e) {
-      setNotice('nNoData', 'bad');
-    }
+    let saved = null; try { saved = localStorage.getItem('gpu-token'); } catch {}
+    if (saved) { try { await signIn(saved); } catch { signOut(); } }
+    try { await loadAll(); } catch (e) { setNotice('nNoData', 'bad'); }
+    if (!state.myId) setNotice('nSignIn');
+    else if (!state.canWrite) setNotice('nViewOnly');
     refreshAdmin();
     render();
+    // pick up other people's bookings while the page stays open
+    setInterval(async () => { if (document.hidden) return; try { await loadAll(); render(); } catch {} }, 60000);
   })();
 })();
 </script>
