@@ -1,0 +1,1077 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lab GPU Scheduler</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: GPU node strip → allocation timeline → (my requests with calendar | admin) → statistics. Columns stack on phones. */
+:root {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #eaeef4;
+  --fg: #16202e;
+  --muted: #5d6b7e;
+  --line: #d6dde8;
+  --accent: #5b45c9;
+  --accent-fg: #ffffff;
+  --accent-soft: #ebe7fb;
+  --ok: #1f8a4c;
+  --ok-soft: #dff5e7;
+  --warn: #b7700a;
+  --warn-soft: #fcefd3;
+  --bad: #c43d3d;
+  --bad-soft: #fbe3e3;
+  /* categorical (per person), validated for CVD separation on both surfaces */
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948; --s-other: #8a93a3;
+  --font-body: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  --radius: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161e; --surface: #1a2130; --surface-2: #232c3d; --fg: #e8edf5; --muted: #98a5b8; --line: #2f3a4e;
+    --accent: #9d8bf0; --accent-fg: #11161e; --accent-soft: #2a2748;
+    --ok: #4cc27d; --ok-soft: #173627; --warn: #e5a53a; --warn-soft: #3c2d12; --bad: #ef7373; --bad-soft: #3e1f1f;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --s-other: #6b7585;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161e; --surface: #1a2130; --surface-2: #232c3d; --fg: #e8edf5; --muted: #98a5b8; --line: #2f3a4e;
+  --accent: #9d8bf0; --accent-fg: #11161e; --accent-soft: #2a2748;
+  --ok: #4cc27d; --ok-soft: #173627; --warn: #e5a53a; --warn-soft: #3c2d12; --bad: #ef7373; --bad-soft: #3e1f1f;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --s-other: #6b7585;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 14px; line-height: 1.5; }
+.wrap {
+  max-width: 1180px; margin: 0 auto;
+  padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 24px;
+}
+h1, h2, h3 { margin: 0; text-wrap: balance; font-weight: 600; }
+h1 { font-size: 22px; letter-spacing: -0.01em; }
+h2 { font-size: 15px; }
+h3 { font-size: 13px; color: var(--muted); font-weight: 600; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.hint { font-size: 12px; color: var(--muted); }
+
+/* header */
+.topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; }
+.topbar .brand { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.topbar .right { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.me { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.me img { width: 32px; height: 32px; border-radius: 50%; background: var(--surface-2); }
+.me .who { display: flex; flex-direction: column; min-width: 0; }
+.me .who b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.role { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+.role.admin { background: var(--accent-soft); color: var(--accent); }
+
+.notice { padding: 10px 14px; border-radius: var(--radius); background: var(--warn-soft); color: var(--fg); border-left: 3px solid var(--warn); }
+.notice.bad { background: var(--bad-soft); border-left-color: var(--bad); }
+
+/* gpu strip */
+.gpu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.gpu { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; cursor: pointer; }
+.gpu.maintenance { opacity: 0.72; }
+.gpu.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.gpu .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.gpu .name { font-weight: 600; font-size: 15px; }
+.gpu .spec { font-size: 12px; color: var(--muted); }
+/* cluster map: one square per card */
+.cards { display: flex; flex-wrap: wrap; gap: 4px; }
+.cards i { display: block; width: 22px; height: 22px; border-radius: 4px; background: var(--surface-2); border: 1px dashed var(--line); box-sizing: border-box; }
+.cards i.held { border: none; }
+.cards i.over { border: 2px solid var(--warn); background: var(--warn-soft); }
+.gpu.maintenance .cards i { background: repeating-linear-gradient(45deg, var(--surface-2) 0 4px, var(--bg) 4px 8px); border-style: solid; }
+.cluster { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.cluster .top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.stack { display: flex; height: 18px; border-radius: 4px; overflow: hidden; background: var(--surface-2); gap: 2px; }
+.stack i { display: block; height: 100%; min-width: 2px; }
+.stack i.free { background: transparent; }
+.stack i.maint { background: repeating-linear-gradient(45deg, var(--surface-2) 0 4px, var(--bg) 4px 8px); }
+.gpu .usage { display: flex; justify-content: space-between; font-size: 12px; }
+.gpu .users { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.gpu .users span { background: var(--surface-2); padding: 1px 6px; border-radius: 4px; }
+.gpu .users span .mono { background: none; padding: 0; }
+.empty { background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius); padding: 24px; text-align: center; color: var(--muted); }
+
+/* panels */
+.cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; min-width: 0; }
+.panel > header { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.panel > .body { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+.section-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.count { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+
+/* forms */
+form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
+form .full { grid-column: 1 / -1; }
+label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); min-width: 0; }
+label.inline { flex-direction: row; align-items: center; gap: 6px; }
+label.inline input, label.inline select { width: auto; padding: 4px 6px; }
+input, select, textarea, button { font: inherit; color: inherit; }
+input, select, textarea { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
+textarea { resize: vertical; min-height: 60px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+button { border: 1px solid var(--line); background: var(--surface); padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+button:hover { background: var(--surface-2); }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button.primary:hover { filter: brightness(1.08); }
+button.ok { border-color: var(--ok); color: var(--ok); }
+button.bad { border-color: var(--bad); color: var(--bad); }
+button.sm { padding: 3px 9px; font-size: 12px; }
+button.link { border: none; background: transparent; color: var(--muted); padding: 2px 6px; font-size: 12px; }
+a.btn { display: inline-block; border: 1px solid var(--line); background: var(--surface); padding: 3px 9px; font-size: 12px; border-radius: 6px; color: var(--fg); text-decoration: none; }
+a.btn:hover { background: var(--surface-2); }
+a.btn.ok { border-color: var(--ok); color: var(--ok); }
+button.link:hover { color: var(--fg); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { border: none; border-radius: 0; padding: 4px 10px; font-size: 12px; color: var(--muted); background: transparent; }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+/* calendar range picker */
+.cal { grid-column: 1 / -1; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.cal .nav { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.cal .nav b { font-weight: 600; }
+.cal .grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.cal .dow { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); text-align: center; padding-bottom: 2px; }
+.cal .day { position: relative; border: 1px solid transparent; border-radius: 6px; padding: 4px 2px 3px; text-align: center; cursor: pointer; background: var(--bg); display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.cal .day .n { font-size: 12px; line-height: 1.2; }
+.cal .day .f { font-size: 10px; line-height: 1.2; font-family: var(--font-mono); color: var(--muted); }
+.cal .day.other { opacity: 0.35; }
+.cal .day.past { opacity: 0.35; cursor: not-allowed; }
+.cal .day.full { background: var(--warn-soft); }
+.cal .day.full .f { color: var(--warn); }
+.cal .day.today { border-color: var(--line); }
+.cal .day:hover:not(.past) { border-color: var(--accent); }
+.cal .day.in { background: var(--accent-soft); }
+.cal .day.edge { background: var(--accent); color: var(--accent-fg); }
+.cal .day.edge .f { color: var(--accent-fg); opacity: 0.85; }
+.cal .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
+.cal .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+.range-summary { grid-column: 1 / -1; font-size: 13px; display: flex; gap: 8px 16px; flex-wrap: wrap; align-items: center; }
+
+/* request list */
+.reqs { display: flex; flex-direction: column; gap: 10px; }
+.req { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; display: grid; grid-template-columns: 4px minmax(0, 1fr); gap: 10px; }
+.req .stripe { border-radius: 2px; background: var(--line); }
+.req.pending .stripe { background: var(--warn); }
+.req.approved .stripe { background: var(--ok); }
+.req.rejected .stripe { background: var(--bad); }
+.req .main { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.req .line1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.req .person { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.req .person img { width: 20px; height: 20px; border-radius: 50%; }
+.req .purpose { white-space: pre-wrap; overflow-wrap: anywhere; }
+.req .meta { font-size: 12px; color: var(--muted); display: flex; gap: 6px 14px; flex-wrap: wrap; }
+.req .note { font-size: 12px; padding: 6px 8px; border-radius: 6px; background: var(--surface-2); overflow-wrap: anywhere; }
+.pill { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+.pill.pending { background: var(--warn-soft); color: var(--warn); }
+.pill.approved { background: var(--ok-soft); color: var(--ok); }
+.pill.rejected { background: var(--bad-soft); color: var(--bad); }
+.decide { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto auto; gap: 6px; }
+@media (max-width: 480px) { .decide { grid-template-columns: minmax(0, 1fr); } }
+.conflict { font-size: 12px; color: var(--warn); }
+
+/* timeline (gantt) */
+.tl-wrap { overflow-x: auto; }
+.tl { position: relative; display: grid; grid-template-columns: 150px 1fr; min-width: 0; }
+.tl .names { display: flex; flex-direction: column; border-right: 1px solid var(--line); position: sticky; left: 0; background: var(--surface); z-index: 2; }
+.tl .names .hdr { height: 38px; border-bottom: 1px solid var(--line); }
+.tl .names .node { padding: 4px 10px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.tl .names .node b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl .names .node { background: var(--surface-2); }
+.tl .names .card-row { height: 26px; padding: 0 10px 0 18px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; font-size: 12px; min-width: 0; }
+.tl .names .card-row small { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl .names .card-row.over { color: var(--warn); }
+.tl .row.node-row { background: var(--surface-2); }
+.tl .row.over { background-color: var(--warn-soft); }
+.tl .track { position: relative; }
+.tl .days { display: flex; height: 38px; border-bottom: 1px solid var(--line); }
+.tl .days .d { flex: 0 0 var(--dw); text-align: center; font-size: 10px; color: var(--muted); display: flex; flex-direction: column; justify-content: center; line-height: 1.2; border-left: 1px solid var(--line); }
+.tl .days .d b { font-size: 12px; color: var(--fg); font-weight: 500; }
+.tl .days .d.we { background: var(--surface-2); }
+.tl .days .d.today b { color: var(--accent); font-weight: 700; }
+.tl .row { position: relative; border-bottom: 1px solid var(--line); background-image: linear-gradient(to right, var(--line) 1px, transparent 1px); background-size: var(--dw) 100%; }
+.tl .row .we { position: absolute; top: 0; bottom: 0; background: var(--surface-2); opacity: 0.6; }
+.tl .bar { position: absolute; height: 20px; border-radius: 4px; color: #fff; font-size: 11px; line-height: 20px; padding: 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 0 0 2px var(--surface); cursor: default; }
+.tl .bar.mine { outline: 2px solid var(--fg); outline-offset: -2px; }
+.tl .todayline { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); z-index: 1; pointer-events: none; }
+.tl .nodata { padding: 16px; color: var(--muted); font-size: 13px; }
+.legend { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+/* stats */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.tile { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.tile .v { font-size: 24px; font-weight: 600; letter-spacing: -0.01em; }
+.tile .l { font-size: 12px; color: var(--muted); }
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+.chart { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.chart.wide { grid-column: 1 / -1; }
+.hbars { display: grid; grid-template-columns: minmax(80px, 140px) minmax(0, 1fr) 60px; gap: 6px 10px; align-items: center; font-size: 12px; }
+.hbars .lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hbars .bar { height: 14px; border-radius: 0 4px 4px 0; background: var(--accent); min-width: 2px; }
+.hbars .val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); text-align: right; }
+.hbars .track { background: var(--surface-2); border-radius: 0 4px 4px 0; height: 14px; }
+.hbars .track .bar { height: 100%; }
+.line-chart { position: relative; }
+.line-chart svg { width: 100%; height: auto; display: block; }
+.line-chart .tip { position: absolute; top: 4px; left: 0; transform: translateX(-50%); background: var(--fg); color: var(--bg); font-size: 11px; padding: 3px 7px; border-radius: 4px; white-space: nowrap; pointer-events: none; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 6px; font-size: 13px; z-index: 20; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
+@media (prefers-reduced-motion: no-preference) { .toast { animation: rise .2s ease-out; } @keyframes rise { from { opacity: 0; transform: translate(-50%, 6px); } } }
+
+.admins { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 14px; }
+.admins .legend span { background: var(--surface-2); padding: 2px 4px 2px 8px; border-radius: 999px; color: var(--fg); }
+.picker { position: relative; max-width: 360px; }
+.picker .results { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.12); display: flex; flex-direction: column; overflow: hidden; }
+.picker .hit { display: flex; align-items: center; gap: 8px; border: none; border-radius: 0; text-align: left; padding: 6px 10px; }
+.picker .hit img { width: 20px; height: 20px; border-radius: 50%; }
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table th, .table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+.table-wrap { overflow-x: auto; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tabs button { border: none; background: transparent; color: var(--muted); padding: 4px 8px; border-radius: 6px; }
+.tabs button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">
+      <h1 data-i18n="title">Lab GPU Scheduler</h1>
+      <span class="muted" id="today-label"></span>
+    </div>
+    <div class="right">
+      <button class="link" id="lang-toggle" type="button">中文</button>
+      <div class="me" id="me">
+        <img id="me-avatar" alt="" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'/>">
+        <div class="who">
+          <label class="inline" style="gap:4px"><span data-i18n="ghUser">GitHub user</span> <input id="me-login" type="text" placeholder="octocat" style="width:120px"></label>
+          <span class="role" id="me-role" data-i18n="roleGuest">Guest</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="notice" id="notice" hidden></div>
+
+  <section>
+    <div class="section-title">
+      <h2 data-i18n="nodes">GPU nodes</h2>
+      <div class="actions">
+        <span class="count" id="gpu-summary"></span>
+        <label class="inline"><span data-i18n="queryDate">Date</span> <input id="q-day" type="date"></label>
+        <button class="sm" id="q-today" type="button" hidden data-i18n="backToToday">Back to today</button>
+      </div>
+    </div>
+    <p class="hint" style="margin-top:4px" data-i18n="nodesHint">Each square is one card, colored by who holds it. Click a node to filter the timeline below; change the date to see any day.</p>
+    <div style="height:10px"></div>
+    <div class="cluster" id="cluster" hidden></div>
+    <div style="height:12px"></div>
+    <div class="gpu-grid" id="gpu-grid"></div>
+  </section>
+
+  <section class="panel" id="schedule-panel">
+    <header>
+      <h2 id="sched-title" data-i18n="schedule">Allocations</h2>
+      <div class="actions">
+        <span class="count" id="sched-count"></span>
+        <button class="sm" id="sched-clear" type="button" hidden data-i18n="showAllNodes">Show all nodes</button>
+        <div class="seg" id="tl-nav"><button type="button" data-shift="-7">‹</button><button type="button" data-shift="0" data-i18n="today">Today</button><button type="button" data-shift="7">›</button></div>
+        <div class="seg" id="sched-view"><button type="button" data-view="timeline" aria-pressed="true" data-i18n="viewTimeline">Timeline</button><button type="button" data-view="list" aria-pressed="false" data-i18n="viewList">List</button></div>
+      </div>
+    </header>
+    <div class="body">
+      <div id="sched-timeline"></div>
+      <div class="reqs" id="sched-list" hidden></div>
+    </div>
+  </section>
+
+  <div class="cols">
+    <section class="panel">
+      <header>
+        <h2 data-i18n="myRequests">My requests</h2>
+        <span class="count" id="my-count"></span>
+      </header>
+      <div class="body">
+        <form id="req-form" autocomplete="off">
+          <label><span data-i18n="fNode">Node</span>
+            <select id="f-gpu" required></select>
+          </label>
+          <label><span data-i18n="fCards">Cards</span>
+            <input id="f-count" type="number" min="1" value="1" required>
+          </label>
+          <div class="cal" id="cal">
+            <div class="nav">
+              <button type="button" class="sm" id="cal-prev">‹</button>
+              <b id="cal-title"></b>
+              <button type="button" class="sm" id="cal-next">›</button>
+            </div>
+            <div class="grid" id="cal-grid"></div>
+            <div class="legend"><span><i style="background:var(--accent)"></i><span data-i18n="calSelected">Selected range</span></span><span><i style="background:var(--warn-soft);border:1px solid var(--warn)"></i><span data-i18n="calFull">No free cards</span></span><span class="hint" data-i18n="calHint">Numbers are free cards on that node. Click a start day, then an end day.</span></div>
+          </div>
+          <div class="range-summary">
+            <label class="inline"><span data-i18n="fStart">Start</span> <input id="f-start" type="date" required></label>
+            <label class="inline"><span data-i18n="fEnd">End</span> <input id="f-end" type="date" required></label>
+            <span class="count" id="range-days"></span>
+          </div>
+          <label class="full"><span data-i18n="fPurpose">What for (experiment, expected VRAM, can it be preempted?)</span>
+            <textarea id="f-purpose" required data-i18n-placeholder="fPurposePh" placeholder="e.g. LoRA fine-tune of LLaMA-7B, ~40 GB VRAM, fine to run overnight"></textarea>
+          </label>
+          <div class="full actions">
+            <button type="submit" class="primary" id="f-submit" data-i18n="submit">Submit request</button>
+          </div>
+        </form>
+        <div class="reqs" id="my-reqs"></div>
+      </div>
+    </section>
+
+    <section class="panel" id="admin-panel" hidden>
+      <header>
+        <div class="tabs" role="tablist">
+          <button role="tab" aria-selected="true" data-tab="queue"><span data-i18n="tabQueue">Pending</span> <span class="count" id="queue-count"></span></button>
+          <button role="tab" aria-selected="false" data-tab="all" data-i18n="tabAll">History</button>
+          <button role="tab" aria-selected="false" data-tab="gpus" data-i18n="tabGpus">Manage nodes</button>
+        </div>
+      </header>
+      <div class="body" id="admin-body"></div>
+    </section>
+  </div>
+
+  <section class="panel" id="stats-panel">
+    <header>
+      <h2 data-i18n="stats">Usage statistics</h2>
+      <div class="actions">
+        <div class="seg" id="stats-range">
+          <button type="button" data-range="30" aria-pressed="true" data-i18n="last30">Last 30 days</button>
+          <button type="button" data-range="90" aria-pressed="false" data-i18n="last90">Last 90 days</button>
+          <button type="button" data-range="month" aria-pressed="false" data-i18n="thisMonth">This month</button>
+        </div>
+      </div>
+    </header>
+    <div class="body" id="stats-body"></div>
+  </section>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  // ---------- dates (local, ISO yyyy-mm-dd strings everywhere) ----------
+  const pad = (n) => String(n).padStart(2, '0');
+  const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const parse = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+  const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return iso(d); };
+  const daysBetween = (a, b) => Math.round((parse(b) - parse(a)) / 86400000);
+  const TODAY = iso(new Date());
+  $('today-label').textContent = TODAY;
+
+  // ---------- i18n ----------
+  const I18N = {
+    en: {
+      title: 'Lab GPU Scheduler', identifying: 'Identifying you…', roleGuest: 'Guest', roleMember: 'Member', roleAdmin: 'Admin',
+      nodes: 'GPU nodes', queryDate: 'Date', backToToday: 'Back to today',
+      nodesHint: 'Each square is one card, colored by who holds it. Click a node to filter the timeline below; change the date to see any day. Data refreshes about a minute after any issue changes.',
+      clusterTitle: 'Whole cluster', freeCards: (n) => `${n} free`, maintCards: (n) => `${n} in maintenance`, overAlloc: 'over-allocated',
+      myRequests: 'My requests', fNode: 'Node', fCards: 'Cards', fStart: 'Start', fEnd: 'End',
+      fPurpose: 'What for (experiment, expected VRAM, can it be preempted?)',
+      fPurposePh: 'e.g. LoRA fine-tune of LLaMA-7B, ~40 GB VRAM, fine to run overnight',
+      submit: 'Submit request', tabQueue: 'Pending', tabAll: 'History', tabGpus: 'Manage nodes',
+      schedule: 'Allocations', showAllNodes: 'Show all nodes', viewTimeline: 'Timeline', viewList: 'List',
+      calSelected: 'Selected range', calFull: 'No free cards', calHint: 'Numbers are free cards on that node. Click a start day, then an end day.',
+      calNoNode: 'Pick a node to see its free cards per day.',
+      rangeDays: (n, c) => `${n} day${n === 1 ? '' : 's'} × ${c} card${c === 1 ? '' : 's'} = ${n * c} card-days`,
+      dow: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+      months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+      monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      status: { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', withdrawn: 'Withdrawn', released: 'Released' },
+      today: 'Today', inUse: (d) => `${d} in use`, free: (n) => `${n} free`, nobody: (d) => `${d}: nobody`,
+      full: 'Full', available: 'Available', maintenance: 'Maintenance', until: 'until',
+      summary: (n, u, t, d) => `${n} node${n === 1 ? '' : 's'} · ${d}: ${u}/${t} cards in use`,
+      noNodesAdmin: 'No GPU nodes yet. Add your first machine under “Manage nodes”.',
+      noNodes: 'No GPU nodes yet. Once an admin adds nodes, each machine’s usage will show here.',
+      count: (n) => `${n}`, approvedCount: (n) => `${n} approved`,
+      signInToRequest: 'Type your GitHub username in the top-right corner to see your own requests.',
+      noMine: 'You have not submitted any requests. Fill in the form above; the admin’s decision will show up here.',
+      withdraw: 'Withdraw', confirmWithdraw: 'Confirm withdraw?', release: 'Release early', confirmRelease: 'Confirm release?',
+      releaseHint: 'Done early? Close the issue on GitHub to release the cards.',
+      noSchedule: 'No approved allocations in this window.', noScheduleList: 'No approved allocations that are still running.',
+      noPending: 'Nothing waiting for approval.', noHistory: 'No decided requests yet.',
+      nodeDeleted: '(node removed)', submittedOn: 'submitted', admin: 'Admin', member: 'Member', me: 'Me', other: 'Others', you: 'you',
+      nodeMaint: 'This node is currently marked as under maintenance.',
+      conflict: (free, peak, total) => `Conflict: at most ${free} card${free === 1 ? '' : 's'} free in this window (${peak}/${total} already approved).`,
+      okToApprove: (free, total) => `${free}/${total} cards free in this window. Safe to approve.`,
+      notePh: 'Note (optional), e.g. low priority, may be preempted', approve: 'Approve', reject: 'Reject',
+      slotsPh: (free) => `GPU ids (optional)${free ? ', free: ' + free : ''}`, slotsHint: 'Which physical cards to give, e.g. 0,2. Leave empty to assign the lowest free cards automatically.',
+      vSlots: (n, max) => `Enter exactly ${n} distinct GPU id${n === 1 ? '' : 's'} between 0 and ${max}, e.g. 0,2.`, auto: 'auto',
+      admins: 'Admins', adminsHint: 'Admins are collaborators with write access on the repo. Change them in the repo settings.', noAdmins: 'No other admins yet.',
+      adminSearchPh: 'Search people by name to add as admin…', alreadyAdmin: 'already admin', remove: 'Remove', tAdminAdded: 'Admin added', tAdminRemoved: 'Admin removed',
+      reopen: 'Undo decision, review again', confirmReopen: 'Confirm undo?',
+      addNode: 'Add a node', gName: 'Node name', gNamePh: 'e.g. node-01 / 4090-server', gModel: 'GPU model', gModelPh: 'e.g. A100 / RTX 4090',
+      gCards: 'Cards', gMem: 'VRAM per card (GB)', gNote: 'Note', gNotePh: 'e.g. IP 10.0.0.12, NLP group has priority', add: 'Add',
+      thNode: 'Node', thConfig: 'Config', thMem: 'VRAM', thStatus: 'Status', noNodesTable: 'No nodes yet.',
+      restore: 'Mark available', markMaint: 'Mark maintenance', del: 'Delete', confirmDel: 'Confirm delete?',
+      tSubmitted: 'Submitted. Waiting for admin approval.', tApproved: 'Approved', tRejected: 'Rejected', tWithdrawn: 'Withdrawn', tReleased: 'Released',
+      tReopened: 'Back in the pending queue', tAdded: (n) => `Added node ${n}`, tDeleted: 'Node deleted',
+      vSignIn: 'Sign in to claude.ai first.', vPickNode: 'Pick a node.', vCards: 'Request at least 1 card.', vTooMany: (n, c) => `${n} only has ${c} cards.`,
+      vDates: 'End date cannot be before start date.', vPurpose: 'Say what the GPUs are for.', vGpuForm: 'Fill in node name, model and card count.',
+      eNoPerm: 'You do not have write access. Ask the admin to make you a Contributor.', eQuota: 'Storage is full. Ask the admin to clear old records.',
+      eRate: 'Too many actions at once. Try again in a moment.', eFail: (m) => `Failed: ${m || 'unknown error'}`,
+      ghUser: 'GitHub user', updated: 'updated', nNoData: 'Could not load data.json. Has the Pages workflow run yet?',
+      withdrawHint: 'Close the issue on GitHub to withdraw.', reviewOnGitHub: 'Review on GitHub', tOpenedIssue: 'Opened the GitHub issue form in a new tab. Submit it there.',
+      decideHint: (free) => `Add the label approved or rejected on the issue.${free ? ` To pin cards, comment "/gpu ${free}".` : ''} Comment "/note …" to add a note.`,
+      editNodes: 'Edit nodes.json', editNodesHint: 'Nodes live in nodes.json in the repo; edit it and commit, the page rebuilds.',
+      unparsable: 'Issues the scheduler could not read', unparsableHint: 'The form fields are missing or the dates are not YYYY-MM-DD. Ask the author to edit the issue.',
+      nNoDb: 'Could not reach the shared data; the page is read-only for now. Sign in to claude.ai and reload.',
+      nSignIn: 'Sign in to claude.ai to submit requests. Signed-out visitors can only view allocations.',
+      nViewOnly: 'You have view-only access. Ask the admin to set you as a Contributor in the share settings; then you can submit requests.',
+      nRevoked: 'Your access changed. Reload the page.',
+      stats: 'Usage statistics', last30: 'Last 30 days', last90: 'Last 90 days', thisMonth: 'This month',
+      utilization: 'Cluster utilization', cardDays: 'Card-days used', reqApproved: 'Approved', reqRejected: 'Rejected', reqPending: 'Pending now',
+      byUser: 'Card-days by person', byNode: 'Utilization by node', daily: 'Daily utilization',
+      statsHint: 'Card-days = cards × days held. Utilization = card-days used ÷ card-days available (nodes under maintenance excluded).',
+      noStats: 'No approved allocations in this period yet.', pct: (p) => `${p}%`, cd: (n) => `${n} cd`,
+      tipDaily: (d, u, t, p) => `${d}: ${u}/${t} cards (${p}%)`,
+    },
+    zh: {
+      title: 'Lab GPU 调度台', identifying: '正在识别身份…', roleGuest: '访客', roleMember: '成员', roleAdmin: '管理员',
+      nodes: 'GPU 节点', queryDate: '查询日期', backToToday: '回到今天',
+      nodesHint: '每个方块是一张卡，颜色代表占用者。点一台节点可以筛选下方的时间线；改日期可以查任意一天。',
+      clusterTitle: '整个集群', freeCards: (n) => `${n} 卡空闲`, maintCards: (n) => `${n} 卡维护中`, overAlloc: '超额分配',
+      myRequests: '我的申请', fNode: '目标节点', fCards: '卡数', fStart: '开始', fEnd: '结束',
+      fPurpose: '用途说明（跑什么实验、预计显存、能否被抢占等）',
+      fPurposePh: '例如：LLaMA-7B LoRA 微调，约 40GB 显存，可以晚上跑',
+      submit: '提交申请', tabQueue: '待审批', tabAll: '全部记录', tabGpus: '节点管理',
+      schedule: '分配情况', showAllNodes: '显示全部节点', viewTimeline: '时间线', viewList: '列表',
+      calSelected: '已选区间', calFull: '无空闲卡', calHint: '数字是该节点当天的空闲卡数。先点开始日，再点结束日。',
+      calNoNode: '选择一个节点后，这里会显示它每天的空闲卡数。',
+      rangeDays: (n, c) => `${n} 天 × ${c} 卡 = ${n * c} 卡·天`,
+      dow: ['一', '二', '三', '四', '五', '六', '日'],
+      months: ['1 月', '2 月', '3 月', '4 月', '5 月', '6 月', '7 月', '8 月', '9 月', '10 月', '11 月', '12 月'],
+      monthsShort: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+      status: { pending: '待审批', approved: '已批准', rejected: '已拒绝', withdrawn: '已撤回', released: '已释放' },
+      today: '今日', inUse: (d) => `${d}占用`, free: (n) => `${n} 卡空闲`, nobody: (d) => `${d}无人占用`,
+      full: '已满', available: '有空闲', maintenance: '维护中', until: '至',
+      summary: (n, u, t, d) => `${n} 台节点 · ${d} ${u}/${t} 卡在用`,
+      noNodesAdmin: '还没有登记任何 GPU 节点。在「节点管理」里添加第一台机器。',
+      noNodes: '还没有登记任何 GPU 节点。等管理员添加节点后，这里会显示每台机器的占用情况。',
+      count: (n) => `${n} 条`, approvedCount: (n) => `${n} 条已批准`,
+      signInToRequest: '在右上角填上你的 GitHub 用户名，就能看到自己的申请。',
+      noMine: '你还没有提交过申请。填好上面的表单，管理员审批后会在这里看到结果。',
+      withdraw: '撤回申请', confirmWithdraw: '确认撤回？', release: '提前释放', confirmRelease: '确认释放？',
+      releaseHint: '提前跑完了？在 GitHub 上关闭 issue 就能释放。',
+      noSchedule: '这段时间内没有已批准的分配。', noScheduleList: '目前没有已批准、尚未结束的分配。',
+      noPending: '没有待审批的申请。', noHistory: '还没有处理过的申请。',
+      nodeDeleted: '（节点已删除）', submittedOn: '提交于', admin: '管理员', member: '成员', me: '我', other: '其他人', you: '你',
+      nodeMaint: '该节点目前标记为维护中。',
+      conflict: (free, peak, total) => `冲突：该时段内最多只剩 ${free} 卡（已批准 ${peak}/${total}）。`,
+      okToApprove: (free, total) => `该时段内剩余 ${free}/${total} 卡，可以批准。`,
+      notePh: '备注（可选），例如：优先级低，随时可能被抢占', approve: '批准', reject: '拒绝',
+      slotsPh: (free) => `GPU 编号（可选）${free ? '，空闲：' + free : ''}`, slotsHint: '指定分给哪几张卡，例如 0,2。留空则自动分配编号最小的空闲卡。',
+      vSlots: (n, max) => `请填写 ${n} 个不重复的 GPU 编号（0 到 ${max}），例如 0,2。`, auto: '自动',
+      admins: '管理员', adminsHint: '管理员 = 仓库里有 write 权限的协作者，在仓库设置里管理。', noAdmins: '还没有其他管理员。',
+      adminSearchPh: '按姓名搜索，添加为管理员…', alreadyAdmin: '已是管理员', remove: '移除', tAdminAdded: '已添加管理员', tAdminRemoved: '已移除管理员',
+      reopen: '撤销决定，重新审批', confirmReopen: '确认撤销决定？',
+      addNode: '添加节点', gName: '节点名称', gNamePh: '例如 node-01 / 4090-server', gModel: 'GPU 型号', gModelPh: '例如 A100 / RTX 4090',
+      gCards: '卡数', gMem: '单卡显存 (GB)', gNote: '备注', gNotePh: '例如：IP 10.0.0.12，优先给 NLP 组', add: '添加',
+      thNode: '节点', thConfig: '配置', thMem: '显存', thStatus: '状态', noNodesTable: '还没有节点。',
+      restore: '恢复可用', markMaint: '标记维护', del: '删除', confirmDel: '确认删除？',
+      tSubmitted: '已提交，等待管理员审批。', tApproved: '已批准', tRejected: '已拒绝', tWithdrawn: '已撤回', tReleased: '已释放',
+      tReopened: '已退回待审批', tAdded: (n) => `已添加节点 ${n}`, tDeleted: '已删除节点',
+      vSignIn: '请先登录 claude.ai。', vPickNode: '请选择一个节点。', vCards: '卡数至少为 1。', vTooMany: (n, c) => `${n} 只有 ${c} 张卡。`,
+      vDates: '结束日期不能早于开始日期。', vPurpose: '请填写用途说明。', vGpuForm: '请填写节点名称、型号和卡数。',
+      eNoPerm: '没有权限写入，请让管理员把你设为 Contributor（协作者）。', eQuota: '存储已满，请联系管理员清理旧记录。',
+      eRate: '操作太频繁，请稍后再试。', eFail: (m) => `操作失败：${m || '未知错误'}`,
+      ghUser: 'GitHub 用户', updated: '更新于', nNoData: '读不到 data.json。Pages 工作流跑过了吗？',
+      withdrawHint: '在 GitHub 上关闭这个 issue 即可撤回。', reviewOnGitHub: '去 GitHub 审批', tOpenedIssue: '已在新标签页打开 GitHub 的申请表单，在那里提交即可。',
+      decideHint: (free) => `在 issue 上加标签 approved 或 rejected。${free ? `要指定卡号，评论 "/gpu ${free}"。` : ''}评论 "/note …" 可以加备注。`,
+      editNodes: '编辑 nodes.json', editNodesHint: '节点配置在仓库的 nodes.json 里，改完提交后页面会自动重建。',
+      unparsable: '无法解析的 issue', unparsableHint: '表单字段缺失或日期不是 YYYY-MM-DD 格式，请让作者编辑 issue。',
+      nNoDb: '无法连接到共享数据，暂时只能查看。请在 claude.ai 中登录后重试。',
+      nSignIn: '请登录 claude.ai 后再提交申请；未登录时只能查看分配情况。',
+      nViewOnly: '你目前只有查看权限。请管理员在分享设置里把你设为 Contributor（协作者），之后就能提交申请。',
+      nRevoked: '你的访问权限已变更，请刷新页面。',
+      stats: '使用统计', last30: '近 30 天', last90: '近 90 天', thisMonth: '本月',
+      utilization: '集群利用率', cardDays: '已用卡·天', reqApproved: '已批准', reqRejected: '已拒绝', reqPending: '当前待审',
+      byUser: '各成员使用量（卡·天）', byNode: '各节点利用率', daily: '每日利用率',
+      statsHint: '卡·天 = 卡数 × 占用天数。利用率 = 已用卡·天 ÷ 可用卡·天（维护中的节点不计）。',
+      noStats: '这段时间内还没有已批准的分配。', pct: (p) => `${p}%`, cd: (n) => `${n} 卡·天`,
+      tipDaily: (d, u, t, p) => `${d}：${u}/${t} 卡（${p}%）`,
+    },
+  };
+  let lang = 'en';
+  try { const saved = localStorage.getItem('gpu-lang'); if (saved === 'zh' || saved === 'en') lang = saved; } catch {}
+  const t = (k, ...a) => { const v = I18N[lang][k]; return typeof v === 'function' ? v(...a) : (v ?? k); };
+  const tStatus = (s) => I18N[lang].status[s] || s;
+  const fmtShort = (s) => { const d = parse(s); return lang === 'zh' ? `${d.getMonth() + 1}/${d.getDate()}` : `${I18N.en.monthsShort[d.getMonth()]} ${d.getDate()}`; };
+  function applyStatic() {
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+    document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = t(el.dataset.i18nPlaceholder); });
+    $('lang-toggle').textContent = lang === 'zh' ? 'English' : '中文';
+    document.title = t('title');
+    renderRole();
+  }
+  $('lang-toggle').addEventListener('click', () => {
+    lang = lang === 'zh' ? 'en' : 'zh';
+    try { localStorage.setItem('gpu-lang', lang); } catch {}
+    applyStatic(); if (state.noticeKey) notice(t(state.noticeKey), state.noticeKind); render();
+  });
+
+  // Monday of this week, as the default timeline window start
+  const mondayOf = (s) => { const d = parse(s); const dow = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dow); return iso(d); };
+
+  const state = {
+    myId: null, isAdmin: false, repo: '', generatedAt: '',
+    gpus: [], requests: [], problems: [],
+    adminTab: 'queue', confirmKey: null,
+    queryDay: TODAY, filterGpu: null, colors: {},
+    noticeKey: null, noticeKind: '', booted: false,
+    admins: [],                    // ids the owner has made admins (settings/admins)
+    adminSearch: [],               // people picker results
+    calMonth: TODAY.slice(0, 7),   // yyyy-mm shown in the picker
+    picking: false,                // true after the first click of a range
+    tlStart: mondayOf(TODAY), tlDays: 28, schedView: 'timeline',
+    statsRange: '30',
+  };
+
+  // ---------- helpers ----------
+  function allRequests() {
+    return [...state.requests].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  }
+  // The days a request actually holds cards: approved for its window, released until the day it was released.
+  function heldRange(r) {
+    if (r.status === 'approved') return { start: r.start, end: r.end };
+    if (r.status === 'released') { const closed = (r.closedAt || '').slice(0, 10); return { start: r.start, end: closed && closed < r.end ? closed : r.end }; }
+    return null;
+  }
+  const activeOn = (r, day) => r.status === 'approved' && r.start <= day && r.end >= day;
+  const heldOn = (r, day) => { const h = heldRange(r); return !!h && h.start <= day && h.end >= day; };
+  const overlaps = (a, b) => a.start <= b.end && b.start <= a.end;
+  function gpuById(id) { return state.gpus.find(g => g.id === id); }
+  function allocatedOn(gpuId, day, reqs) {
+    return (reqs || allRequests()).filter(r => r.gpuId === gpuId && activeOn(r, day)).reduce((s, r) => s + (r.count || 0), 0);
+  }
+  function peakOverlap(req) {
+    const others = allRequests().filter(r => r.gpuId === req.gpuId && r.id !== req.id && r.status === 'approved' && overlaps(r, req));
+    let peak = 0;
+    const days = new Set([req.start, ...others.map(r => r.start), ...others.map(r => r.end)]);
+    for (const d of days) { if (d < req.start || d > req.end) continue; peak = Math.max(peak, others.filter(r => activeOn(r, d)).reduce((s, r) => s + r.count, 0)); }
+    return peak;
+  }
+  // Stable color per person: ids sorted, first 8 get a categorical slot, the rest share a neutral.
+  function colorMap(uids) {
+    const sorted = [...new Set(uids)].sort();
+    const m = {};
+    sorted.forEach((u, i) => { m[u] = i < 8 ? `var(--s${i + 1})` : 'var(--s-other)'; });
+    return m;
+  }
+  // Card assignment: every approved request on a node gets fixed card indices for its whole window.
+  // Pinned indices (set by the admin at approval) go first; the rest take the lowest cards free for the
+  // entire window; anything that does not fit lands on overflow indices >= the node's card count.
+  function assignSlots(node, reqs) {
+    const items = reqs.filter(r => r.gpuId === node.id && r.status === 'approved').sort((a, b) => a.start.localeCompare(b.start) || (a.createdAt || '').localeCompare(b.createdAt || ''));
+    const busy = [];   // busy[cardIndex] = list of {start, end}
+    const fits = (idx, r) => !(busy[idx] || []).some(iv => overlaps(iv, r));
+    const take = (idx, r) => { (busy[idx] = busy[idx] || []).push({ start: r.start, end: r.end }); };
+    const out = {};
+    const pinned = items.filter(r => Array.isArray(r.decision && r.decision.slots) && r.decision.slots.length === r.count);
+    for (const r of pinned) { out[r.id] = r.decision.slots.map(Number); for (const i of out[r.id]) take(i, r); }
+    for (const r of items) {
+      if (out[r.id]) continue;
+      const got = [];
+      for (let i = 0; i < node.cards && got.length < r.count; i++) if (fits(i, r)) got.push(i);
+      let over = node.cards;
+      while (got.length < r.count) { if (fits(over, r)) got.push(over); over++; }
+      out[r.id] = got; for (const i of got) take(i, r);
+    }
+    return out;
+  }
+  let toastTimer;
+  function toast(msg) {
+    let el = document.querySelector('.toast'); if (!el) { el = document.createElement('div'); el.className = 'toast'; document.body.appendChild(el); }
+    el.textContent = msg; clearTimeout(toastTimer); toastTimer = setTimeout(() => el.remove(), 2600);
+  }
+  function notice(msg, kind, key) { const n = $('notice'); n.hidden = !msg; n.textContent = msg || ''; n.className = 'notice' + (kind ? ' ' + kind : ''); if (key !== undefined) { state.noticeKey = key; state.noticeKind = kind || ''; } }
+  const setNotice = (key, kind) => notice(key ? t(key) : '', kind, key);
+  // People are GitHub logins; avatars come from github.com.
+  async function names(ids) {
+    const out = {};
+    for (const id of new Set(ids.filter(Boolean))) out[id] = { id, name: id, avatarUrl: `https://github.com/${encodeURIComponent(id)}.png?size=40` };
+    return out;
+  }
+  const nameOf = (profiles, uid) => (profiles[uid] && profiles[uid].name) || uid || t('member');
+  const personHTML = (p, uid) => `<span class="person">${p ? `<img src="${esc(p.avatarUrl)}" alt="" loading="lazy">` : ''}<span>${esc(nameOf({ [uid]: p }, uid))}</span></span>`;
+  // Admin = a collaborator with write access on the repo (data.json lists them).
+  function refreshAdmin() {
+    state.isAdmin = !!state.myId && state.admins.map(a => a.toLowerCase()).includes(state.myId.toLowerCase());
+    $('admin-panel').hidden = !state.isAdmin;
+    renderRole();
+  }
+  function renderRole() {
+    const roleEl = $('me-role');
+    roleEl.textContent = state.isAdmin ? t('roleAdmin') : (state.myId ? t('roleMember') : t('roleGuest'));
+    roleEl.className = 'role' + (state.isAdmin ? ' admin' : '');
+    $('me-avatar').src = state.myId ? `https://github.com/${encodeURIComponent(state.myId)}.png?size=64` : "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'/>";
+  }
+  // GitHub URLs the page sends people to
+  const repoUrl = () => `https://github.com/${state.repo}`;
+  const newIssueUrl = (fields) => {
+    const q = new URLSearchParams({ template: 'gpu-request.yml', ...fields });
+    return `${repoUrl()}/issues/new?${q.toString()}`;
+  };
+
+  // ---------- render ----------
+  let renderSeq = 0;
+  async function render() {
+    const seq = ++renderSeq;
+    const reqs = allRequests();
+    const profiles = await names([...reqs.map(r => r.uid), ...reqs.map(r => r.decision && r.decision.decidedBy)]);
+    if (seq !== renderSeq) return;
+    state.colors = colorMap(reqs.map(r => r.uid));   // one color per person, the same in every view
+    state.slots = {}; for (const g of state.gpus) Object.assign(state.slots, assignSlots(g, reqs));   // rid -> card indices
+    renderGpus(reqs, profiles);
+    renderCalendar(reqs);
+    renderMine(reqs, profiles);
+    renderSchedule(reqs, profiles);
+    renderStats(reqs, profiles);
+    if (state.isAdmin) renderAdmin(reqs, profiles);
+  }
+
+  function renderGpus(reqs, profiles) {
+    const grid = $('gpu-grid');
+    const sel = $('f-gpu');
+    const prevSel = sel.value;
+    sel.innerHTML = state.gpus.filter(g => g.status !== 'maintenance').map(g => `<option value="${esc(g.id)}">${esc(g.name)} — ${esc(g.cards)}× ${esc(g.model)}</option>`).join('');
+    if (prevSel && [...sel.options].some(o => o.value === prevSel)) sel.value = prevSel;
+    if (!state.gpus.length) {
+      grid.innerHTML = `<div class="empty" style="grid-column:1/-1">${esc(state.isAdmin ? t('noNodesAdmin') : t('noNodes'))}</div>`;
+      $('gpu-summary').textContent = ''; $('q-today').hidden = state.queryDay === TODAY; $('cluster').hidden = true;
+      return;
+    }
+    const day = state.queryDay;
+    const dayLabel = day === TODAY ? t('today') : day;
+    const colors = state.colors;
+    let totalCards = 0, usedCards = 0, maintCards = 0;
+    const byUser = {};   // cards held per person across the cluster, for the stacked bar
+    grid.innerHTML = state.gpus.map(g => {
+      const active = reqs.filter(r => r.gpuId === g.id && activeOn(r, day)).sort((a, b) => a.start.localeCompare(b.start));
+      const used = active.reduce((s, r) => s + (r.count || 0), 0);
+      const maint = g.status === 'maintenance';
+      if (!maint) { totalCards += g.cards; usedCards += Math.min(used, g.cards); for (const r of active) byUser[r.uid] = (byUser[r.uid] || 0) + r.count; }
+      else maintCards += g.cards;
+      // one square per physical card, index i = GPU i, holder from the card assignment
+      const slots = [];
+      for (const r of active) for (const i of (state.slots[r.id] || [])) slots[i] = r;
+      let squares = '';
+      for (let i = 0; i < Math.max(g.cards, slots.length); i++) {
+        const r = slots[i];
+        if (!r) squares += `<i title="GPU ${i} · ${esc(t('free', 1))}"></i>`;
+        else squares += `<i class="${i >= g.cards ? 'over' : 'held'}" style="${i >= g.cards ? '' : `background:${colors[r.uid]}`}" title="GPU ${i} · ${esc(nameOf(profiles, r.uid))} · ${esc(r.start)} → ${esc(r.end)}${i >= g.cards ? ' · ' + esc(t('overAlloc')) : ''}"></i>`;
+      }
+      const who = active.map(r => `<span title="${esc(r.start)} → ${esc(r.end)}"><i class="dot" style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colors[r.uid]};margin-right:4px;vertical-align:0"></i>${esc(nameOf(profiles, r.uid))} ×${r.count} <span class="mono">${esc(t('until'))} ${esc(r.end.slice(5))}</span></span>`).join('');
+      const selected = state.filterGpu === g.id ? ' selected' : '';
+      const pill = maint ? `<span class="pill">${esc(t('maintenance'))}</span>` : (used >= g.cards ? `<span class="pill pending">${esc(t('full'))}</span>` : `<span class="pill approved">${esc(t('available'))}</span>`);
+      return `<div class="gpu ${maint ? 'maintenance' : ''}${selected}" data-gpu="${esc(g.id)}" role="button" tabindex="0" aria-pressed="${selected ? 'true' : 'false'}">
+        <div class="head"><span class="name">${esc(g.name)}</span>${pill}</div>
+        <div class="spec mono">${esc(g.cards)}× ${esc(g.model)}${g.memoryGb ? ' · ' + esc(g.memoryGb) + 'GB' : ''}</div>
+        <div class="cards">${squares}</div>
+        <div class="usage mono"><span>${esc(t('inUse', dayLabel))} ${used}/${g.cards}</span><span>${esc(t('free', Math.max(0, g.cards - used)))}</span></div>
+        ${who ? `<div class="users">${who}</div>` : `<div class="users">${esc(t('nobody', dayLabel))}</div>`}
+        ${g.note ? `<div class="spec">${esc(g.note)}</div>` : ''}
+      </div>`;
+    }).join('');
+    $('gpu-summary').textContent = t('summary', state.gpus.length, usedCards, totalCards, dayLabel);
+    $('q-today').hidden = day === TODAY;
+
+    // cluster-wide stacked bar: one segment per person, then free, then maintenance
+    const all = totalCards + maintCards;
+    const cluster = $('cluster');
+    cluster.hidden = !all;
+    if (all) {
+      const users = Object.entries(byUser).sort((a, b) => b[1] - a[1]);
+      const held = users.reduce((s, u) => s + u[1], 0);
+      const free = Math.max(0, totalCards - Math.min(held, totalCards));
+      const seg = (n, style, title) => n > 0 ? `<i style="flex:${n} 0 0;${style}" title="${esc(title)}"></i>` : '';
+      cluster.innerHTML = `
+        <div class="top"><h3>${esc(t('clusterTitle'))}</h3><span class="count">${esc(dayLabel)} · ${usedCards}/${totalCards} · ${totalCards ? Math.round(usedCards / totalCards * 100) : 0}%</span></div>
+        <div class="stack">${users.map(([u, n]) => seg(Math.min(n, totalCards), `background:${colors[u]}`, `${nameOf(profiles, u)} ×${n}`)).join('')}${seg(free, '', t('freeCards', free)).replace('<i ', '<i class="free" ')}${seg(maintCards, '', t('maintCards', maintCards)).replace('<i ', '<i class="maint" ')}</div>
+        <div class="legend">${users.map(([u, n]) => `<span><i style="background:${colors[u]}"></i>${esc(nameOf(profiles, u))} ×${n}</span>`).join('')}<span><i style="background:var(--surface-2);border:1px dashed var(--line)"></i>${esc(t('freeCards', free))}</span>${maintCards ? `<span><i class="maint" style="background:repeating-linear-gradient(45deg,var(--surface-2) 0 3px,var(--bg) 3px 6px)"></i>${esc(t('maintCards', maintCards))}</span>` : ''}</div>`;
+    }
+  }
+
+  // ----- calendar range picker -----
+  function renderCalendar(reqs) {
+    const [y, m] = state.calMonth.split('-').map(Number);
+    $('cal-title').textContent = lang === 'zh' ? `${y} 年 ${I18N.zh.months[m - 1]}` : `${I18N.en.months[m - 1]} ${y}`;
+    const g = gpuById($('f-gpu').value);
+    const start = $('f-start').value, end = $('f-end').value;
+    const first = new Date(y, m - 1, 1);
+    const lead = (first.getDay() + 6) % 7;            // Monday-first
+    const gridStart = iso(new Date(y, m - 1, 1 - lead));
+    let html = t('dow').map(d => `<div class="dow">${esc(d)}</div>`).join('');
+    for (let i = 0; i < 42; i++) {
+      const day = addDays(gridStart, i);
+      const inMonth = day.slice(0, 7) === state.calMonth;
+      const past = day < TODAY;
+      const cls = ['day'];
+      if (!inMonth) cls.push('other');
+      if (past) cls.push('past');
+      if (day === TODAY) cls.push('today');
+      let freeTxt = '';
+      if (g) { const free = g.cards - allocatedOn(g.id, day, reqs); freeTxt = String(Math.max(0, free)); if (free <= 0) cls.push('full'); }
+      if (start && end && day >= start && day <= end) cls.push(day === start || day === end ? 'edge' : 'in');
+      html += `<div class="${cls.join(' ')}" data-day="${day}" role="button" tabindex="${past ? -1 : 0}"><span class="n">${parse(day).getDate()}</span>${freeTxt !== '' ? `<span class="f">${freeTxt}</span>` : ''}</div>`;
+    }
+    $('cal-grid').innerHTML = html;
+    const count = parseInt($('f-count').value, 10) || 1;
+    $('range-days').textContent = start && end && end >= start ? t('rangeDays', daysBetween(start, end) + 1, count) : '';
+  }
+  function pickDay(day) {
+    if (day < TODAY) return;
+    const s = $('f-start'), e = $('f-end');
+    if (!state.picking || day < s.value) { s.value = day; e.value = day; state.picking = true; }
+    else { e.value = day; state.picking = false; }
+    renderCalendar(allRequests());
+  }
+  $('cal-grid').addEventListener('click', (ev) => { const el = ev.target.closest('.day[data-day]'); if (el) pickDay(el.dataset.day); });
+  $('cal-grid').addEventListener('keydown', (ev) => { const el = ev.target.closest('.day[data-day]'); if (el && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); pickDay(el.dataset.day); } });
+  const shiftMonth = (n) => { const [y, m] = state.calMonth.split('-').map(Number); const d = new Date(y, m - 1 + n, 1); state.calMonth = iso(d).slice(0, 7); renderCalendar(allRequests()); };
+  $('cal-prev').addEventListener('click', () => shiftMonth(-1));
+  $('cal-next').addEventListener('click', () => shiftMonth(1));
+  $('f-gpu').addEventListener('change', () => renderCalendar(allRequests()));
+  $('f-count').addEventListener('input', () => renderCalendar(allRequests()));
+  for (const id of ['f-start', 'f-end']) $(id).addEventListener('change', () => {
+    if ($('f-end').value < $('f-start').value) $('f-end').value = $('f-start').value;
+    if ($('f-start').value) state.calMonth = $('f-start').value.slice(0, 7);
+    state.picking = false; renderCalendar(allRequests());
+  });
+
+  function reqCard(r, profiles, opts = {}) {
+    const g = gpuById(r.gpuId);
+    const dec = r.decision;
+    const decider = dec && dec.decidedBy ? ((profiles[dec.decidedBy] && profiles[dec.decidedBy].name) || t('admin')) : '';
+    const parts = [];
+    const idx = state.slots[r.id];
+    parts.push(`<span class="mono">${esc(g ? g.name : t('nodeDeleted'))} ×${esc(r.count)}${idx && idx.length ? ` · GPU ${esc(idx.join(','))}${r.decision && r.decision.slots ? '' : ' (' + esc(t('auto')) + ')'}` : ''}</span>`);
+    parts.push(`<span class="mono">${esc(r.start)} → ${esc(r.end)}</span>`);
+    parts.push(`<span>${esc(t('submittedOn'))} ${esc((r.createdAt || '').slice(0, 10))}</span>`);
+    let noteHTML = '';
+    if (dec && (dec.note || decider)) noteHTML = `<div class="note">${esc(decider)} · ${esc(tStatus(dec.status))}${dec.note ? ': ' + esc(dec.note) : ''}</div>`;
+    return `<div class="req ${esc(r.status)}" data-rid="${esc(r.id)}">
+      <div class="stripe"></div>
+      <div class="main">
+        <div class="line1">${personHTML(profiles[r.uid], r.uid)}<span class="pill ${esc(r.status)}">${esc(tStatus(r.status))}</span></div>
+        <div class="purpose">${esc(r.purpose)}</div>
+        <div class="meta">${parts.join('')}</div>
+        ${noteHTML}
+        ${opts.extra || ''}
+      </div>
+    </div>`;
+  }
+
+  function renderMine(reqs, profiles) {
+    const mine = reqs.filter(r => r.uid === state.myId);
+    $('my-count').textContent = mine.length ? t('count', mine.length) : '';
+    const list = $('my-reqs');
+    if (!state.myId) { list.innerHTML = `<div class="empty">${esc(t('signInToRequest'))}</div>`; return; }
+    if (!mine.length) { list.innerHTML = `<div class="empty">${esc(t('noMine'))}</div>`; return; }
+    list.innerHTML = mine.map(r => {
+      let extra = '';
+      if (r.status === 'pending') extra = `<div class="actions"><a class="sm btn" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(t('withdraw'))} ↗</a><span class="hint">${esc(t('withdrawHint'))}</span></div>`;
+      else if (r.status === 'approved') extra = `<div class="actions"><a class="sm btn" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(t('release'))} ↗</a><span class="hint">${esc(t('releaseHint'))}</span></div>`;
+      return reqCard(r, profiles, { extra });
+    }).join('');
+  }
+
+  // ----- allocations: timeline + list -----
+  function renderSchedule(reqs, profiles) {
+    const g = state.filterGpu ? gpuById(state.filterGpu) : null;
+    $('sched-title').textContent = g ? `${t('schedule')} · ${g.name}` : t('schedule');
+    $('sched-clear').hidden = !g;
+    const nodes = g ? [g] : state.gpus;
+    const approved = reqs.filter(r => r.status === 'approved' && (!g || r.gpuId === g.id));
+    document.querySelectorAll('#sched-view button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === state.schedView)));
+    $('sched-timeline').hidden = state.schedView !== 'timeline';
+    $('sched-list').hidden = state.schedView !== 'list';
+    $('tl-nav').hidden = state.schedView !== 'timeline';
+
+    // list
+    const upcoming = approved.filter(r => r.end >= TODAY).sort((a, b) => a.start.localeCompare(b.start) || a.gpuId.localeCompare(b.gpuId));
+    $('sched-list').innerHTML = upcoming.length ? upcoming.map(r => reqCard(r, profiles)).join('') : `<div class="empty">${esc(t('noScheduleList'))}</div>`;
+
+    // timeline
+    const DW = 36;
+    const wStart = state.tlStart, wEnd = addDays(wStart, state.tlDays - 1);
+    const inWindow = approved.filter(r => r.start <= wEnd && r.end >= wStart);
+    $('sched-count').textContent = inWindow.length ? t('approvedCount', inWindow.length) : '';
+    const colors = state.colors;
+    let days = '';
+    const weekends = [];
+    for (let i = 0; i < state.tlDays; i++) {
+      const d = addDays(wStart, i), dt = parse(d), we = dt.getDay() === 0 || dt.getDay() === 6;
+      if (we) weekends.push(i);
+      days += `<div class="d ${we ? 'we' : ''} ${d === TODAY ? 'today' : ''}"><span>${esc(t('dow')[(dt.getDay() + 6) % 7])}</span><b>${dt.getDate()}</b>${dt.getDate() === 1 || i === 0 ? `<span>${esc(t('monthsShort')[dt.getMonth()])}</span>` : ''}</div>`;
+    }
+    const todayIdx = daysBetween(wStart, TODAY);
+    const todayLine = todayIdx >= 0 && todayIdx < state.tlDays ? `<div class="todayline" style="left:${todayIdx * DW + DW / 2}px"></div>` : '';
+    let namesCol = `<div class="hdr"></div>`, rows = '';
+    const ROW = 26;
+    for (const node of nodes) {
+      const bars = inWindow.filter(r => r.gpuId === node.id);
+      // rows: one per physical card, plus overflow rows if approvals exceed the node
+      const maxIdx = bars.reduce((m, r) => Math.max(m, ...(state.slots[r.id] || [0])), node.cards - 1);
+      const cardRows = maxIdx + 1;
+      namesCol += `<div class="node" style="height:${ROW}px"><b>${esc(node.name)}</b></div>`;
+      for (let i = 0; i < cardRows; i++) namesCol += `<div class="card-row ${i >= node.cards ? 'over' : ''}"><span class="mono">GPU ${i}</span><small>${i >= node.cards ? esc(t('overAlloc')) : esc(node.model)}</small></div>`;
+      rows += `<div class="row node-row" style="height:${ROW}px">${weekends.map(i => `<div class="we" style="left:${i * DW}px;width:${DW}px"></div>`).join('')}</div>`;
+      for (let i = 0; i < cardRows; i++) {
+        let barsHTML = weekends.map(w => `<div class="we" style="left:${w * DW}px;width:${DW}px"></div>`).join('');
+        for (const b of bars) {
+          if (!(state.slots[b.id] || []).includes(i)) continue;
+          const s = Math.max(0, daysBetween(wStart, b.start)), e = Math.min(state.tlDays - 1, daysBetween(wStart, b.end));
+          const label = nameOf(profiles, b.uid);
+          barsHTML += `<div class="bar ${b.uid === state.myId ? 'mine' : ''}" style="left:${s * DW + 2}px;width:${(e - s + 1) * DW - 4}px;top:3px;background:${colors[b.uid]}" title="GPU ${i} · ${esc(label)} ×${b.count} · ${esc(b.start)} → ${esc(b.end)}&#10;${esc(b.purpose)}">${esc(label)}</div>`;
+        }
+        rows += `<div class="row ${i >= node.cards ? 'over' : ''}" style="height:${ROW}px">${barsHTML}</div>`;
+      }
+    }
+    const legendIds = [...new Set(inWindow.map(r => r.uid))].sort();
+    const legend = legendIds.length ? `<div class="legend">${legendIds.map(u => `<span><i style="background:${colors[u]}"></i>${esc(nameOf(profiles, u))}${u === state.myId ? ` (${esc(t('you'))})` : ''}</span>`).join('')}</div>` : '';
+    $('sched-timeline').innerHTML = nodes.length ? `
+      <div class="hint mono">${esc(fmtShort(wStart))} → ${esc(fmtShort(wEnd))}</div>
+      <div class="tl-wrap"><div class="tl" style="--dw:${DW}px;width:${150 + state.tlDays * DW}px">
+        <div class="names">${namesCol}</div>
+        <div class="track"><div class="days">${days}</div>${rows}${todayLine}</div>
+      </div></div>
+      ${legend || `<div class="nodata">${esc(t('noSchedule'))}</div>`}` : `<div class="empty">${esc(t('noNodes'))}</div>`;
+  }
+  $('sched-view').addEventListener('click', (ev) => { const b = ev.target.closest('[data-view]'); if (b) { state.schedView = b.dataset.view; render(); } });
+  $('tl-nav').addEventListener('click', (ev) => { const b = ev.target.closest('[data-shift]'); if (!b) return; const n = Number(b.dataset.shift); state.tlStart = n === 0 ? mondayOf(TODAY) : addDays(state.tlStart, n); render(); });
+
+  // ----- statistics -----
+  function statsPeriod() {
+    if (state.statsRange === 'month') return { start: TODAY.slice(0, 7) + '-01', end: TODAY };
+    return { start: addDays(TODAY, -(Number(state.statsRange) - 1)), end: TODAY };
+  }
+  function computeStats(reqs, period) {
+    const nodes = state.gpus.filter(g => g.status !== 'maintenance');
+    const nodeIds = new Set(nodes.map(g => g.id));
+    const held = reqs.filter(r => heldRange(r) && nodeIds.has(r.gpuId));
+    const nDays = daysBetween(period.start, period.end) + 1;
+    const totalCards = nodes.reduce((s, g) => s + g.cards, 0);
+    const byUser = {}, byNode = {}, daily = [];
+    let used = 0;
+    for (const g of nodes) byNode[g.id] = 0;
+    for (let i = 0; i < nDays; i++) {
+      const day = addDays(period.start, i);
+      let dayUsed = 0;
+      for (const g of nodes) {
+        const onNode = held.filter(r => r.gpuId === g.id && heldOn(r, day));
+        const sum = Math.min(g.cards, onNode.reduce((s, r) => s + r.count, 0));  // capped at the node's cards
+        byNode[g.id] += sum; dayUsed += sum;
+        for (const r of onNode) byUser[r.uid] = (byUser[r.uid] || 0) + r.count;
+      }
+      used += dayUsed;
+      daily.push({ day, used: dayUsed, total: totalCards });
+    }
+    const avail = totalCards * nDays;
+    return { nDays, totalCards, used, avail, util: avail ? Math.round(used / avail * 100) : 0, byUser, byNode, daily,
+      approved: reqs.filter(r => r.decision && r.decision.status === 'approved' && (r.decision.decidedAt || '').slice(0, 10) >= period.start).length,
+      rejected: reqs.filter(r => r.decision && r.decision.status === 'rejected' && (r.decision.decidedAt || '').slice(0, 10) >= period.start).length,
+      pending: reqs.filter(r => r.status === 'pending').length };
+  }
+  function renderStats(reqs, profiles) {
+    document.querySelectorAll('#stats-range button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.range === state.statsRange)));
+    const period = statsPeriod();
+    const s = computeStats(reqs, period);
+    const tiles = `<div class="tiles">
+      <div class="tile"><span class="v">${s.util}%</span><span class="l">${esc(t('utilization'))}</span></div>
+      <div class="tile"><span class="v">${s.used}</span><span class="l">${esc(t('cardDays'))} / ${s.avail}</span></div>
+      <div class="tile"><span class="v">${s.approved}</span><span class="l">${esc(t('reqApproved'))}</span></div>
+      <div class="tile"><span class="v">${s.rejected}</span><span class="l">${esc(t('reqRejected'))}</span></div>
+      <div class="tile"><span class="v">${s.pending}</span><span class="l">${esc(t('reqPending'))}</span></div>
+    </div>`;
+    if (!s.used) { $('stats-body').innerHTML = tiles + `<div class="empty">${esc(t('noStats'))}</div><p class="hint">${esc(t('statsHint'))}</p>`; return; }
+
+    // by person: top 8 by card-days, remainder folded into "Others"; each bar carries the person's color and a direct label
+    const userRows = Object.entries(s.byUser).sort((a, b) => b[1] - a[1]);
+    const colors = state.colors;
+    const top = userRows.slice(0, 8), rest = userRows.slice(8).reduce((acc, r) => acc + r[1], 0);
+    const maxU = Math.max(...top.map(r => r[1]), rest, 1);
+    let byUser = top.map(([u, v]) => `<div class="lbl">${esc(nameOf(profiles, u))}</div><div class="track"><div class="bar" style="width:${v / maxU * 100}%;background:${colors[u]}"></div></div><div class="val">${esc(t('cd', v))}</div>`).join('');
+    if (rest) byUser += `<div class="lbl">${esc(t('other'))}</div><div class="track"><div class="bar" style="width:${rest / maxU * 100}%;background:var(--s-other)"></div></div><div class="val">${esc(t('cd', rest))}</div>`;
+
+    // by node: utilization % of each node's capacity
+    const byNode = state.gpus.filter(g => g.status !== 'maintenance').map(g => {
+      const pct = g.cards ? Math.round(s.byNode[g.id] / (g.cards * s.nDays) * 100) : 0;
+      return `<div class="lbl">${esc(g.name)}</div><div class="track"><div class="bar" style="width:${pct}%"></div></div><div class="val">${pct}%</div>`;
+    }).join('');
+
+    // daily utilization line with a hover readout
+    const W = 600, H = 150, PL = 32, PR = 8, PT = 10, PB = 22;
+    const n = s.daily.length, x = (i) => PL + (n > 1 ? i / (n - 1) : 0.5) * (W - PL - PR);
+    const yOf = (p) => PT + (1 - p / 100) * (H - PT - PB);
+    const pts = s.daily.map((d, i) => [x(i), yOf(d.total ? d.used / d.total * 100 : 0)]);
+    const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+    const area = line + ` L${pts[n - 1][0].toFixed(1)} ${yOf(0)} L${pts[0][0].toFixed(1)} ${yOf(0)} Z`;
+    const grid = [0, 50, 100].map(p => `<line x1="${PL}" x2="${W - PR}" y1="${yOf(p)}" y2="${yOf(p)}" stroke="var(--line)" stroke-width="1"/><text x="${PL - 6}" y="${yOf(p) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${p}%</text>`).join('');
+    const tickEvery = n > 40 ? 14 : 7;
+    const ticks = s.daily.map((d, i) => (i % tickEvery === 0 || i === n - 1) ? `<text x="${x(i)}" y="${H - 6}" text-anchor="middle" font-size="10" fill="var(--muted)">${esc(fmtShort(d.day))}</text>` : '').join('');
+    const chart = `<div class="line-chart" id="daily-chart">
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t('daily'))}">
+        ${grid}${ticks}
+        <path d="${area}" fill="var(--accent-soft)"/>
+        <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
+        <circle id="daily-dot" r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2" opacity="0"/>
+        <line id="daily-x" y1="${PT}" y2="${yOf(0)}" stroke="var(--muted)" stroke-dasharray="3 3" opacity="0"/>
+      </svg><div class="tip" id="daily-tip" hidden></div></div>`;
+
+    $('stats-body').innerHTML = tiles + `<div class="charts">
+      <div class="chart"><h3>${esc(t('byUser'))}</h3><div class="hbars">${byUser}</div></div>
+      <div class="chart"><h3>${esc(t('byNode'))}</h3><div class="hbars">${byNode}</div></div>
+      <div class="chart wide"><h3>${esc(t('daily'))}</h3>${chart}</div>
+    </div><p class="hint">${esc(t('statsHint'))}</p>`;
+
+    const svg = $('daily-chart').querySelector('svg'), tip = $('daily-tip'), dot = $('daily-dot'), xl = $('daily-x');
+    const show = (ev) => {
+      const rect = svg.getBoundingClientRect();
+      const px = (ev.clientX - rect.left) / rect.width * W;
+      const i = Math.max(0, Math.min(n - 1, Math.round((px - PL) / (W - PL - PR) * (n - 1))));
+      const d = s.daily[i], p = pts[i];
+      dot.setAttribute('cx', p[0]); dot.setAttribute('cy', p[1]); dot.setAttribute('opacity', '1');
+      xl.setAttribute('x1', p[0]); xl.setAttribute('x2', p[0]); xl.setAttribute('opacity', '1');
+      tip.hidden = false; tip.textContent = t('tipDaily', d.day, d.used, d.total, d.total ? Math.round(d.used / d.total * 100) : 0);
+      tip.style.left = (p[0] / W * rect.width) + 'px';
+    };
+    svg.addEventListener('mousemove', show); svg.addEventListener('touchmove', (ev) => show(ev.touches[0]), { passive: true });
+    svg.addEventListener('mouseleave', () => { tip.hidden = true; dot.setAttribute('opacity', '0'); xl.setAttribute('opacity', '0'); });
+  }
+  $('stats-range').addEventListener('click', (ev) => { const b = ev.target.closest('[data-range]'); if (b) { state.statsRange = b.dataset.range; render(); } });
+
+  function renderAdmin(reqs, profiles) {
+    const body = $('admin-body');
+    const pending = reqs.filter(r => r.status === 'pending');
+    $('queue-count').textContent = pending.length ? String(pending.length) : '';
+    document.querySelectorAll('.tabs [role=tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === state.adminTab)));
+
+    if (state.adminTab === 'queue') {
+      if (!pending.length) { body.innerHTML = `<div class="empty">${esc(t('noPending'))}</div>`; return; }
+      body.innerHTML = `<div class="reqs">` + pending.map(r => {
+        const g = gpuById(r.gpuId);
+        let conflict = '';
+        if (g) {
+          const peak = peakOverlap(r);
+          const free = g.cards - peak;
+          if (g.status === 'maintenance') conflict = `<div class="conflict">${esc(t('nodeMaint'))}</div>`;
+          else if (r.count > free) conflict = `<div class="conflict">${esc(t('conflict', Math.max(0, free), peak, g.cards))}</div>`;
+          else conflict = `<div class="hint">${esc(t('okToApprove', free, g.cards))}</div>`;
+        }
+        const freeIdx = g ? freeCardsFor(g, r) : [];
+        const extra = `${conflict}<div class="actions">
+          <a class="sm btn ok" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(t('reviewOnGitHub'))} #${r.number} ↗</a>
+          <span class="hint">${esc(t('decideHint', freeIdx.slice(0, r.count).join(',')))}</span>
+        </div>`;
+        return reqCard(r, profiles, { extra });
+      }).join('') + `</div>`;
+      return;
+    }
+    if (state.adminTab === 'all') {
+      const decided = reqs.filter(r => r.status !== 'pending');
+      body.innerHTML = decided.length ? `<div class="reqs">` + decided.map(r => reqCard(r, profiles, { extra: `<div class="actions"><a class="sm btn" href="${esc(r.url)}" target="_blank" rel="noopener">#${r.number} ↗</a></div>` })).join('') + `</div>` : `<div class="empty">${esc(t('noHistory'))}</div>`;
+      return;
+    }
+    const rows = state.gpus.map(g => `<tr>
+        <td><b>${esc(g.name)}</b>${g.note ? `<div class="hint">${esc(g.note)}</div>` : ''}</td>
+        <td class="mono">${esc(g.cards)}× ${esc(g.model)}</td>
+        <td class="mono">${g.memoryGb ? esc(g.memoryGb) + 'GB' : '—'}</td>
+        <td>${g.status === 'maintenance' ? `<span class="pill">${esc(t('maintenance'))}</span>` : `<span class="pill approved">${esc(t('available'))}</span>`}</td>
+      </tr>`).join('');
+    const problems = state.problems.length ? `<div><h3>${esc(t('unparsable'))}</h3><div class="hint">${esc(t('unparsableHint'))}</div><div class="legend">${state.problems.map(p => `<a href="${esc(p.url)}" target="_blank" rel="noopener">#${p.number} ↗</a>`).join('')}</div></div>` : '';
+    body.innerHTML = `
+      <div class="table-wrap">
+        ${state.gpus.length ? `<table class="table"><thead><tr><th>${esc(t('thNode'))}</th><th>${esc(t('thConfig'))}</th><th>${esc(t('thMem'))}</th><th>${esc(t('thStatus'))}</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">${esc(t('noNodesTable'))}</div>`}
+      </div>
+      <div class="actions"><a class="sm btn" href="${esc(repoUrl())}/edit/main/nodes.json" target="_blank" rel="noopener">${esc(t('editNodes'))} ↗</a><span class="hint">${esc(t('editNodesHint'))}</span></div>
+      <div><h3>${esc(t('admins'))}</h3><div class="legend">${state.admins.map(u => `<span><img src="https://github.com/${encodeURIComponent(u)}.png?size=32" alt="" style="width:16px;height:16px;border-radius:50%">${esc(u)}</span>`).join('')}</div><p class="hint">${esc(t('adminsHint'))}</p></div>
+      ${problems}`;
+  }
+
+  // ---------- actions: everything goes through GitHub ----------
+  function onSubmitRequest(ev) {
+    ev.preventDefault();
+    const gpuId = $('f-gpu').value, count = parseInt($('f-count').value, 10), start = $('f-start').value, end = $('f-end').value, purpose = $('f-purpose').value.trim();
+    const g = gpuById(gpuId);
+    if (!g) { toast(t('vPickNode')); return; }
+    if (!(count >= 1)) { toast(t('vCards')); return; }
+    if (count > g.cards) { toast(t('vTooMany', g.name, g.cards)); return; }
+    if (!start || !end || end < start) { toast(t('vDates')); return; }
+    if (!purpose) { toast(t('vPurpose')); return; }
+    const url = newIssueUrl({ node: g.name, cards: String(count), start, end, purpose, title: `[GPU] ${g.name} ×${count} ${start} → ${end}` });
+    window.open(url, '_blank', 'noopener');
+    toast(t('tOpenedIssue'));
+  }
+  // cards on this node free for the request's whole window (for the approval hint)
+  function freeCardsFor(g, r) {
+    const used = new Set();
+    for (const o of allRequests()) if (o.gpuId === g.id && o.id !== r.id && o.status === 'approved' && overlaps(o, r)) for (const i of (state.slots[o.id] || [])) used.add(i);
+    const out = []; for (let i = 0; i < g.cards; i++) if (!used.has(i)) out.push(i);
+    return out;
+  }
+  document.querySelector('.tabs').addEventListener('click', (ev) => { const tab = ev.target.closest('[role=tab]'); if (!tab) return; state.adminTab = tab.dataset.tab; render(); });
+  $('req-form').addEventListener('submit', onSubmitRequest);
+  $('f-start').value = TODAY; $('f-end').value = TODAY;
+  $('q-day').value = TODAY;
+  $('q-day').addEventListener('change', () => { state.queryDay = $('q-day').value || TODAY; render(); });
+  $('q-today').addEventListener('click', () => { state.queryDay = TODAY; $('q-day').value = TODAY; render(); });
+  $('sched-clear').addEventListener('click', () => { state.filterGpu = null; render(); });
+  const toggleGpu = (el) => { const id = el.dataset.gpu; state.filterGpu = state.filterGpu === id ? null : id; render(); };
+  $('gpu-grid').addEventListener('click', (ev) => { const el = ev.target.closest('.gpu[data-gpu]'); if (el) toggleGpu(el); });
+  $('gpu-grid').addEventListener('keydown', (ev) => { const el = ev.target.closest('.gpu[data-gpu]'); if (el && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); toggleGpu(el); } });
+  // who am I: a GitHub login typed once, remembered in this browser
+  const loginEl = $('me-login');
+  try { loginEl.value = localStorage.getItem('gpu-login') || ''; } catch {}
+  const applyLogin = () => { state.myId = loginEl.value.trim().replace(/^@/, '') || null; try { localStorage.setItem('gpu-login', state.myId || ''); } catch {} refreshAdmin(); render(); };
+  loginEl.addEventListener('change', applyLogin);
+
+  // ---------- boot ----------
+  (async () => {
+    applyStatic();
+    state.myId = loginEl.value.trim() || null;
+    render();
+    try {
+      const res = await fetch('data.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error(res.status);
+      const data = await res.json();
+      state.repo = data.repo || ''; state.generatedAt = data.generatedAt || '';
+      state.gpus = (data.nodes || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+      state.requests = data.requests || [];
+      state.admins = data.admins || [];
+      state.problems = data.problems || [];
+      $('today-label').textContent = `${TODAY} · ${t('updated')} ${state.generatedAt.replace('T', ' ').slice(0, 16)}`;
+    } catch (e) {
+      setNotice('nNoData', 'bad');
+    }
+    refreshAdmin();
+    render();
+  })();
+})();
+</script>
+</body>
+</html>

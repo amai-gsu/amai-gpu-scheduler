@@ -1,0 +1,50 @@
+name: GPU request
+description: Request GPU cards on a lab node. An admin will approve by labeling this issue.
+title: "[GPU] "
+labels: ["gpu-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Fill in the request below. Keep the field headings unchanged — the scheduler parses them.
+        Dates are inclusive, in `YYYY-MM-DD`. Close this issue when you are done early (it releases the cards).
+  - type: dropdown
+    id: node
+    attributes:
+      label: Node
+      options:
+        - ada6000
+        - Lab2
+    validations:
+      required: true
+  - type: input
+    id: cards
+    attributes:
+      label: Cards
+      description: How many GPUs on that node
+      placeholder: "1"
+      value: "1"
+    validations:
+      required: true
+  - type: input
+    id: start
+    attributes:
+      label: Start date
+      placeholder: "2026-10-21"
+    validations:
+      required: true
+  - type: input
+    id: end
+    attributes:
+      label: End date
+      placeholder: "2026-10-25"
+    validations:
+      required: true
+  - type: textarea
+    id: purpose
+    attributes:
+      label: Purpose
+      description: What experiment, expected VRAM, whether it can be preempted
+      placeholder: "LoRA fine-tune of LLaMA-7B, ~40 GB VRAM, fine to run overnight"
+    validations:
+      required: true
