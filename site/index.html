@@ -447,17 +447,16 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       tReopened: 'Back in the pending queue', tAdded: (n) => `Added node ${n}`, tDeleted: 'Node deleted',
       vSignIn: 'Sign in with your GitHub token first (top right).', vPickNode: 'Pick a node.', vCards: 'Request at least 1 card.', vTooMany: (n, c) => `${n} only has ${c} cards.`,
       vDates: 'End date cannot be before start date.', vPurpose: 'Say what the GPUs are for.', vGpuForm: 'Fill in node name, model and card count.',
-      eNoPerm: 'GitHub refused the write. Your token needs Contents: Read and write on this repository, and your account needs Write access.', eQuota: 'Storage is full. Ask the admin to clear old records.',
+      eNoPerm: 'GitHub refused the write. Your token needs the public_repo scope, and your account needs Write access on this repository.', eQuota: 'Storage is full. Ask the admin to clear old records.',
       eRate: 'Too many actions at once. Try again in a moment.', eFail: (m) => `Failed: ${m || 'unknown error'}`,
       updated: 'updated', nNoData: 'Could not load bookings.json from GitHub. Check the repository and try again.',
-      roleViewer: 'Viewer', signIn: 'Sign in', signOut: 'Sign out', signInTitle: 'Sign in with a GitHub token', tokenLabel: 'Token', tokenSave: 'Sign in',
+      roleViewer: 'Viewer', signIn: 'Sign in', signOut: 'Sign out', signInTitle: 'Sign in with a GitHub token (one time)', tokenLabel: 'Token', tokenSave: 'Sign in',
       tokenHint: 'Stored only in this browser. It is sent to api.github.com and nowhere else.',
       signInSteps: (url, repo) => [
-        `Open <a href="${url}" target="_blank" rel="noopener">GitHub → New fine-grained token</a> (sign in to GitHub if asked).`,
-        `At the top, set <b>Expiration</b> to something long (1 year). The default of 30 days means you will have to repeat this next month.`,
-        `Under <b>Repository access</b> choose <b>Only select repositories</b> and pick <code>${repo}</code> (just this one).`,
-        `Under <b>Permissions → Repository permissions</b> set <b>Contents</b> to <b>Read and write</b>. Leave everything else as is.`,
-        `Scroll to the bottom, click <b>Generate token</b>, copy it, and paste it below.`],
+        `Open <a href="${url}" target="_blank" rel="noopener">GitHub → New personal access token (classic)</a> (sign in to GitHub if asked).`,
+        `Set <b>Expiration</b> to something long (1 year). The default of 30 days means you will have to repeat this next month.`,
+        `Under <b>Select scopes</b> make sure only <b>public_repo</b> is ticked (it should be pre-ticked). Nothing else.`,
+        `Click <b>Generate token</b> at the bottom, copy it, and paste it below. You must already be a collaborator on <code>${repo}</code>.`],
       tSignedIn: (u) => `Signed in as ${u}`, tSignedInRO: (u) => `Signed in as ${u}, but you cannot write to this repository. Ask an admin to add you as a collaborator with Write access.`,
       eBadToken: 'GitHub rejected the token. Generate a new one and sign in again.',
       cancel: 'Cancel booking', confirmCancel: 'Confirm cancel?', tCancelled: 'Booking cancelled',
@@ -1078,7 +1077,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   $('gpu-grid').addEventListener('click', (ev) => { const el = ev.target.closest('.gpu[data-gpu]'); if (el) toggleGpu(el); });
   $('gpu-grid').addEventListener('keydown', (ev) => { const el = ev.target.closest('.gpu[data-gpu]'); if (el && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); toggleGpu(el); } });
   // ---------- sign-in UI ----------
-  const tokenUrl = () => `https://github.com/settings/personal-access-tokens/new?name=gpu-scheduler&description=Lab+GPU+scheduler+bookings&target_name=${encodeURIComponent(state.repo.split('/')[0])}`;
+  const tokenUrl = () => `https://github.com/settings/tokens/new?scopes=public_repo&description=${encodeURIComponent('Lab GPU scheduler')}`;
   function openSignIn() {
     $('signin-steps').innerHTML = t('signInSteps', tokenUrl(), state.repo).map(x => `<li>${x}</li>`).join('');
     $('signin-panel').hidden = false; $('token-input').focus();

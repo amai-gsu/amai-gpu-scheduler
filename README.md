@@ -8,8 +8,7 @@ the moment you submit it, and the page refuses windows where the cards are alrea
 ## For lab members
 
 1. Open the link above and click **Sign in** (top right). The page walks you through creating a
-   GitHub token that can only write to this one repository (Contents: read and write). Paste it
-   once; your browser remembers it.
+   GitHub token (classic, `public_repo` scope only). Paste it once; your browser remembers it.
 2. Pick a node, click a start and an end day on the calendar (the numbers are free cards per day),
    say what it's for, optionally type the exact GPU ids you want (`0,2`), and click **Book**.
 3. Run with the cards you were given, e.g. `CUDA_VISIBLE_DEVICES=0,2`. Ids match `nvidia-smi` on
@@ -34,7 +33,8 @@ Settings → Collaborators.
 
 The page is static (GitHub Pages, deployed by the workflow in `.github/workflows/pages.yml`).
 All data lives in two JSON files in this repository, which the page reads and writes through the
-GitHub Contents API using each member's own token. Every booking is therefore a commit, so
+GitHub Contents API using each member's own token. (Classic tokens, because the repository is owned
+by a user account and GitHub does not let collaborators use fine-grained tokens there.) Every booking is therefore a commit, so
 `git log bookings.json` is the audit trail. Writes are compare-and-swap on the file's SHA, so two
 people booking at the same moment cannot overwrite each other.
 
