@@ -25,7 +25,7 @@
   --bad-soft: #fbe3e3;
   /* categorical (per person), validated for CVD separation on both surfaces */
   --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948; --s-other: #8a93a3;
-  --font-body: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
   --radius: 8px;
 }
@@ -259,7 +259,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       <span class="muted" id="today-label"></span>
     </div>
     <div class="right">
-      <button class="link" id="lang-toggle" type="button">中文</button>
       <div class="me" id="me">
         <img id="me-avatar" alt="" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'/>">
         <div class="who">
@@ -473,98 +472,17 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       noStats: 'No approved allocations in this period yet.', pct: (p) => `${p}%`, cd: (n) => `${n} cd`,
       tipDaily: (d, u, t, p) => `${d}: ${u}/${t} cards (${p}%)`,
     },
-    zh: {
-      title: 'Lab GPU 调度台', identifying: '正在识别身份…', roleGuest: '访客', roleMember: '成员', roleAdmin: '管理员',
-      nodes: 'GPU 节点', queryDate: '查询日期', backToToday: '回到今天',
-      nodesHint: '每个方块是一张卡，颜色代表占用者。点一台节点可以筛选下方的时间线；改日期可以查任意一天。',
-      clusterTitle: '整个集群', freeCards: (n) => `${n} 卡空闲`, maintCards: (n) => `${n} 卡维护中`, overAlloc: '超额分配',
-      myRequests: '我的预订', fNode: '目标节点', fCards: '卡数', fStart: '开始', fEnd: '结束',
-      fPurpose: '用途说明（跑什么实验、预计显存、能否被抢占等）',
-      fPurposePh: '例如：LLaMA-7B LoRA 微调，约 40GB 显存，可以晚上跑',
-      submit: '预订', tabAll: '全部预订', tabGpus: '节点', fGpuIds: 'GPU 编号（可选）', fGpuIdsPh: '例如 0,2，留空则自动分配编号最小的空闲卡',
-      vNoRoom: (n, g) => `${g} 在这段时间只剩 ${n} 张卡空闲，请换日期或减少卡数。`, vTaken: (taken, free) => `GPU ${taken} 在这段时间已被预订；空闲的是 ${free}。`,
-      schedule: '分配情况', showAllNodes: '显示全部节点', viewTimeline: '时间线', viewList: '列表',
-      calSelected: '已选区间', calFull: '无空闲卡', calHint: '数字是该节点当天的空闲卡数。先点开始日，再点结束日。',
-      calNoNode: '选择一个节点后，这里会显示它每天的空闲卡数。',
-      rangeDays: (n, c) => `${n} 天 × ${c} 卡 = ${n * c} 卡·天`,
-      dow: ['一', '二', '三', '四', '五', '六', '日'],
-      months: ['1 月', '2 月', '3 月', '4 月', '5 月', '6 月', '7 月', '8 月', '9 月', '10 月', '11 月', '12 月'],
-      monthsShort: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
-      status: { pending: '待审批', approved: '已批准', rejected: '已拒绝', withdrawn: '已撤回', released: '已释放' },
-      today: '今日', inUse: (d) => `${d}占用`, free: (n) => `${n} 卡空闲`, nobody: (d) => `${d}无人占用`,
-      full: '已满', available: '有空闲', maintenance: '维护中', until: '至',
-      summary: (n, u, t, d) => `${n} 台节点 · ${d} ${u}/${t} 卡在用`,
-      noNodesAdmin: '还没有登记任何 GPU 节点。在「节点管理」里添加第一台机器。',
-      noNodes: '还没有登记任何 GPU 节点。等管理员添加节点后，这里会显示每台机器的占用情况。',
-      count: (n) => `${n} 条`, approvedCount: (n) => `${n} 条已批准`,
-      signInToRequest: '在右上角登录后就能看到和创建自己的预订。',
-      noMine: '你还没有预订过。在上面选节点和日期即可。',
-      withdraw: '撤回申请', confirmWithdraw: '确认撤回？', release: '提前释放', confirmRelease: '确认释放？',
-      releaseHint: '提前跑完了就释放，让别人能用。',
-      noSchedule: '这段时间内没有已批准的分配。', noScheduleList: '目前没有已批准、尚未结束的分配。',
-      noPending: '没有待审批的申请。', noHistory: '还没有处理过的申请。',
-      nodeDeleted: '（节点已删除）', submittedOn: '提交于', admin: '管理员', member: '成员', me: '我', other: '其他人', you: '你',
-      nodeMaint: '该节点目前标记为维护中。',
-      conflict: (free, peak, total) => `冲突：该时段内最多只剩 ${free} 卡（已批准 ${peak}/${total}）。`,
-      okToApprove: (free, total) => `该时段内剩余 ${free}/${total} 卡，可以批准。`,
-      notePh: '备注（可选），例如：优先级低，随时可能被抢占', approve: '批准', reject: '拒绝',
-      slotsPh: (free) => `GPU 编号（可选）${free ? '，空闲：' + free : ''}`, slotsHint: '指定分给哪几张卡，例如 0,2。留空则自动分配编号最小的空闲卡。',
-      vSlots: (n, max) => `请填写 ${n} 个不重复的 GPU 编号（0 到 ${max}），例如 0,2。`, auto: '自动',
-      admins: '管理员', adminsHint: '仓库里有 Write 权限的人都可以预订；仓库的 Maintainer / Admin 还可以取消别人的预订。', noAdmins: '还没有其他管理员。',
-      adminSearchPh: '按姓名搜索，添加为管理员…', alreadyAdmin: '已是管理员', remove: '移除', tAdminAdded: '已添加管理员', tAdminRemoved: '已移除管理员',
-      reopen: '撤销决定，重新审批', confirmReopen: '确认撤销决定？',
-      addNode: '添加节点', gName: '节点名称', gNamePh: '例如 node-01 / 4090-server', gModel: 'GPU 型号', gModelPh: '例如 A100 / RTX 4090',
-      gCards: '卡数', gMem: '单卡显存 (GB)', gNote: '备注', gNotePh: '例如：IP 10.0.0.12，优先给 NLP 组', add: '添加',
-      thNode: '节点', thConfig: '配置', thMem: '显存', thStatus: '状态', noNodesTable: '还没有节点。',
-      restore: '恢复可用', markMaint: '标记维护', del: '删除', confirmDel: '确认删除？',
-      tSubmitted: '预订成功，这些卡在这段时间归你。', tApproved: '已批准', tRejected: '已拒绝', tWithdrawn: '已撤回', tReleased: '已释放',
-      tReopened: '已退回待审批', tAdded: (n) => `已添加节点 ${n}`, tDeleted: '已删除节点',
-      vSignIn: '请先在右上角用 GitHub token 登录。', vPickNode: '请选择一个节点。', vCards: '卡数至少为 1。', vTooMany: (n, c) => `${n} 只有 ${c} 张卡。`,
-      vDates: '结束日期不能早于开始日期。', vPurpose: '请填写用途说明。', vGpuForm: '请填写节点名称、型号和卡数。',
-      eNoPerm: 'GitHub 拒绝写入。token 需要这个仓库的 Contents 读写权限，账号需要 Write 协作者权限。', eQuota: '存储已满，请联系管理员清理旧记录。',
-      eRate: '操作太频繁，请稍后再试。', eFail: (m) => `操作失败：${m || '未知错误'}`,
-      updated: '更新于', nNoData: '无法从 GitHub 读取 bookings.json，请检查仓库后重试。',
-      roleViewer: '只读', signIn: '登录', signOut: '退出', signInTitle: '用 GitHub token 登录', tokenLabel: 'Token', tokenSave: '登录',
-      tokenHint: '只保存在这个浏览器里，只会发送给 api.github.com。',
-      signInSteps: (url, repo) => [
-        `打开 <a href="${url}" target="_blank" rel="noopener">GitHub → 新建 fine-grained token</a>（如果提示就先登录 GitHub）。`,
-        `在 <b>Repository access</b> 选 <b>Only select repositories</b>，选中 <code>${repo}</code>。`,
-        `在 <b>Permissions → Repository permissions</b> 里把 <b>Contents</b> 设为 <b>Read and write</b>，其他不用动。`,
-        `选一个过期时间（1 年即可），点 <b>Generate token</b>，复制后粘贴到下面。`],
-      tSignedIn: (u) => `已登录：${u}`, tSignedInRO: (u) => `已登录 ${u}，但你没有这个仓库的写权限。请管理员把你加为 Write 权限的协作者。`,
-      eBadToken: 'GitHub 拒绝了这个 token，请重新生成后再登录。',
-      cancel: '取消预订', confirmCancel: '确认取消？', tCancelled: '已取消预订',
-      editNodes: '编辑 nodes.json', editNodesHint: '节点配置在仓库的 nodes.json 里，直接在 GitHub 上编辑提交即可。',
-      nNoDb: '无法连接到共享数据，暂时只能查看。请在 claude.ai 中登录后重试。',
-      nSignIn: '在右上角用 GitHub token 登录后即可预订；未登录只能查看。',
-      nViewOnly: '你的 GitHub 账号没有这个仓库的写权限。请管理员把你加为 Write 权限的协作者。',
-      nRevoked: '你的访问权限已变更，请刷新页面。',
-      stats: '使用统计', last30: '近 30 天', last90: '近 90 天', thisMonth: '本月',
-      utilization: '集群利用率', cardDays: '已用卡·天', reqApproved: '已批准', reqRejected: '已拒绝', reqPending: '当前待审',
-      byUser: '各成员使用量（卡·天）', byNode: '各节点利用率', daily: '每日利用率',
-      statsHint: '卡·天 = 卡数 × 占用天数。利用率 = 已用卡·天 ÷ 可用卡·天（维护中的节点不计）。',
-      noStats: '这段时间内还没有已批准的分配。', pct: (p) => `${p}%`, cd: (n) => `${n} 卡·天`,
-      tipDaily: (d, u, t, p) => `${d}：${u}/${t} 卡（${p}%）`,
-    },
   };
-  let lang = 'en';
-  try { const saved = localStorage.getItem('gpu-lang'); if (saved === 'zh' || saved === 'en') lang = saved; } catch {}
+  const lang = 'en';
   const t = (k, ...a) => { const v = I18N[lang][k]; return typeof v === 'function' ? v(...a) : (v ?? k); };
   const tStatus = (s) => I18N[lang].status[s] || s;
-  const fmtShort = (s) => { const d = parse(s); return lang === 'zh' ? `${d.getMonth() + 1}/${d.getDate()}` : `${I18N.en.monthsShort[d.getMonth()]} ${d.getDate()}`; };
+  const fmtShort = (s) => { const d = parse(s); return `${I18N.en.monthsShort[d.getMonth()]} ${d.getDate()}`; };
   function applyStatic() {
-    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
     document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
     document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = t(el.dataset.i18nPlaceholder); });
-    $('lang-toggle').textContent = lang === 'zh' ? 'English' : '中文';
     document.title = t('title');
     renderRole();
   }
-  $('lang-toggle').addEventListener('click', () => {
-    lang = lang === 'zh' ? 'en' : 'zh';
-    try { localStorage.setItem('gpu-lang', lang); } catch {}
-    applyStatic(); if (state.noticeKey) notice(t(state.noticeKey), state.noticeKind); render();
-  });
 
   // Monday of this week, as the default timeline window start
   const mondayOf = (s) => { const d = parse(s); const dow = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dow); return iso(d); };
@@ -809,7 +727,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   // ----- calendar range picker -----
   function renderCalendar(reqs) {
     const [y, m] = state.calMonth.split('-').map(Number);
-    $('cal-title').textContent = lang === 'zh' ? `${y} 年 ${I18N.zh.months[m - 1]}` : `${I18N.en.months[m - 1]} ${y}`;
+    $('cal-title').textContent = `${I18N.en.months[m - 1]} ${y}`;
     const g = gpuById($('f-gpu').value);
     const start = $('f-start').value, end = $('f-end').value;
     const first = new Date(y, m - 1, 1);
