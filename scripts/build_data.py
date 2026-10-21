@@ -5,11 +5,10 @@ Runs inside GitHub Actions with GITHUB_TOKEN and GITHUB_REPOSITORY set.
 
 Rules
 - A request is an issue with the `gpu-request` label, created from the issue form.
-- Status: label `approved` -> approved, label `rejected` -> rejected, otherwise pending.
-  A closed issue counts as released (if it was approved) or withdrawn (otherwise).
-- Admins = collaborators with write/maintain/admin permission on the repo.
-- An admin comment may contain `/gpu 0,2` to pin physical card ids, and `/note ...` for a note
-  shown on the request. The latest admin comment wins.
+- There is no approval: an open request holds its cards. A closed issue has released them.
+  Admins (collaborators with write access) may add the label `rejected` to cancel a booking.
+- Card ids come from the form's optional "GPU ids" field, or a `/gpu 0,2` comment by the author
+  or an admin; `/note ...` adds a note. Otherwise the lowest free cards are assigned automatically.
 """
 import json
 import os
@@ -95,22 +94,27 @@ def main():
         if not gpu_id or count < 1 or not DATE_RE.match(start) or not DATE_RE.match(end) or end < start:
             problems.append({"number": it["number"], "url": it["html_url"], "reason": "could not parse node / cards / dates"})
             continue
+        # No approval step: an open request holds its cards from the moment it is filed.
+        # A `rejected` label (admins only) is the one override, e.g. to cancel a mistaken booking.
         labels = {l["name"] for l in it.get("labels", [])}
-        decision = None
-        if "approved" in labels:
-            decision = {"status": "approved"}
-        elif "rejected" in labels:
-            decision = {"status": "rejected"}
-        status = decision["status"] if decision else "pending"
+        status = "rejected" if "rejected" in labels else "approved"
         closed_at = it.get("closed_at")
         if it.get("state") == "closed":
             status = "released" if status == "approved" else "withdrawn"
 
-        slots, note, decided_by = None, "", None
-        if decision and it.get("comments", 0):
+        # Card ids: the form's optional "GPU ids" field, or a `/gpu 0,2` comment by the author or an admin.
+        slots = None
+        ids_raw = f.get("gpu ids", "")
+        if ids_raw:
+            ids = sorted({int(x) for x in re.findall(r"\d+", ids_raw)})
+            if len(ids) == count:
+                slots = ids
+        note = ""
+        if it.get("comments", 0):
+            author = it["user"]["login"]
             for c in paged(f"/repos/{REPO}/issues/{it['number']}/comments"):
                 login = c["user"]["login"]
-                if login not in admin_set:
+                if login != author and login not in admin_set:
                     continue
                 body = c.get("body") or ""
                 m = re.search(r"^/gpu\s+([\d,\s]+)$", body, re.M)
@@ -121,9 +125,7 @@ def main():
                 m2 = re.search(r"^/note\s+(.+)$", body, re.M)
                 if m2:
                     note = m2.group(1).strip()
-                decided_by = login
-        if decision:
-            decision.update({"slots": slots, "note": note, "decidedBy": decided_by})
+        decision = {"status": status if status in ("approved", "rejected") else "approved", "slots": slots, "note": note, "decidedBy": None}
 
         requests_out.append({
             "id": f"i{it['number']}",

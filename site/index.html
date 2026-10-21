@@ -329,6 +329,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
             <label class="inline"><span data-i18n="fEnd">End</span> <input id="f-end" type="date" required></label>
             <span class="count" id="range-days"></span>
           </div>
+          <label class="full"><span data-i18n="fGpuIds">GPU ids (optional)</span>
+            <input id="f-gpuids" type="text" class="mono" placeholder="0,2" data-i18n-placeholder="fGpuIdsPh">
+          </label>
           <label class="full"><span data-i18n="fPurpose">What for (experiment, expected VRAM, can it be preempted?)</span>
             <textarea id="f-purpose" required data-i18n-placeholder="fPurposePh" placeholder="e.g. LoRA fine-tune of LLaMA-7B, ~40 GB VRAM, fine to run overnight"></textarea>
           </label>
@@ -343,8 +346,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     <section class="panel" id="admin-panel" hidden>
       <header>
         <div class="tabs" role="tablist">
-          <button role="tab" aria-selected="true" data-tab="queue"><span data-i18n="tabQueue">Pending</span> <span class="count" id="queue-count"></span></button>
-          <button role="tab" aria-selected="false" data-tab="all" data-i18n="tabAll">History</button>
+          <button role="tab" aria-selected="true" data-tab="all" data-i18n="tabAll">History</button>
           <button role="tab" aria-selected="false" data-tab="gpus" data-i18n="tabGpus">Manage nodes</button>
         </div>
       </header>
@@ -389,10 +391,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       nodes: 'GPU nodes', queryDate: 'Date', backToToday: 'Back to today',
       nodesHint: 'Each square is one card, colored by who holds it. Click a node to filter the timeline below; change the date to see any day. Data refreshes about a minute after any issue changes.',
       clusterTitle: 'Whole cluster', freeCards: (n) => `${n} free`, maintCards: (n) => `${n} in maintenance`, overAlloc: 'over-allocated',
-      myRequests: 'My requests', fNode: 'Node', fCards: 'Cards', fStart: 'Start', fEnd: 'End',
+      myRequests: 'My bookings', fNode: 'Node', fCards: 'Cards', fStart: 'Start', fEnd: 'End',
       fPurpose: 'What for (experiment, expected VRAM, can it be preempted?)',
       fPurposePh: 'e.g. LoRA fine-tune of LLaMA-7B, ~40 GB VRAM, fine to run overnight',
-      submit: 'Submit request', tabQueue: 'Pending', tabAll: 'History', tabGpus: 'Manage nodes',
+      submit: 'Book on GitHub', tabAll: 'All bookings', tabGpus: 'Nodes', fGpuIds: 'GPU ids (optional)', fGpuIdsPh: 'e.g. 0,2 — empty takes the lowest free cards',
+      vNoRoom: (n, g) => `Only ${n} card${n === 1 ? '' : 's'} free on ${g} in that window. Pick other dates or fewer cards.`, vTaken: (taken, free) => `GPU ${taken} already booked in that window; free: ${free}.`,
       schedule: 'Allocations', showAllNodes: 'Show all nodes', viewTimeline: 'Timeline', viewList: 'List',
       calSelected: 'Selected range', calFull: 'No free cards', calHint: 'Numbers are free cards on that node. Click a start day, then an end day.',
       calNoNode: 'Pick a node to see its free cards per day.',
@@ -408,7 +411,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       noNodes: 'No GPU nodes yet. Once an admin adds nodes, each machine’s usage will show here.',
       count: (n) => `${n}`, approvedCount: (n) => `${n} approved`,
       signInToRequest: 'Type your GitHub username in the top-right corner to see your own requests.',
-      noMine: 'You have not submitted any requests. Fill in the form above; the admin’s decision will show up here.',
+      noMine: 'You have no bookings yet. Pick a node and dates above.',
       withdraw: 'Withdraw', confirmWithdraw: 'Confirm withdraw?', release: 'Release early', confirmRelease: 'Confirm release?',
       releaseHint: 'Done early? Close the issue on GitHub to release the cards.',
       noSchedule: 'No approved allocations in this window.', noScheduleList: 'No approved allocations that are still running.',
@@ -420,7 +423,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       notePh: 'Note (optional), e.g. low priority, may be preempted', approve: 'Approve', reject: 'Reject',
       slotsPh: (free) => `GPU ids (optional)${free ? ', free: ' + free : ''}`, slotsHint: 'Which physical cards to give, e.g. 0,2. Leave empty to assign the lowest free cards automatically.',
       vSlots: (n, max) => `Enter exactly ${n} distinct GPU id${n === 1 ? '' : 's'} between 0 and ${max}, e.g. 0,2.`, auto: 'auto',
-      admins: 'Admins', adminsHint: 'Admins are collaborators with write access on the repo. Change them in the repo settings.', noAdmins: 'No other admins yet.',
+      admins: 'Admins', adminsHint: 'Admins (write access on the repo) can cancel a booking with the rejected label and edit nodes.json.', noAdmins: 'No other admins yet.',
       adminSearchPh: 'Search people by name to add as admin…', alreadyAdmin: 'already admin', remove: 'Remove', tAdminAdded: 'Admin added', tAdminRemoved: 'Admin removed',
       reopen: 'Undo decision, review again', confirmReopen: 'Confirm undo?',
       addNode: 'Add a node', gName: 'Node name', gNamePh: 'e.g. node-01 / 4090-server', gModel: 'GPU model', gModelPh: 'e.g. A100 / RTX 4090',
@@ -434,7 +437,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       eNoPerm: 'You do not have write access. Ask the admin to make you a Contributor.', eQuota: 'Storage is full. Ask the admin to clear old records.',
       eRate: 'Too many actions at once. Try again in a moment.', eFail: (m) => `Failed: ${m || 'unknown error'}`,
       ghUser: 'GitHub user', updated: 'updated', nNoData: 'Could not load data.json. Has the Pages workflow run yet?',
-      withdrawHint: 'Close the issue on GitHub to withdraw.', reviewOnGitHub: 'Review on GitHub', tOpenedIssue: 'Opened the GitHub issue form in a new tab. Submit it there.',
+      withdrawHint: 'Close the issue on GitHub to withdraw.', reviewOnGitHub: 'Review on GitHub', tOpenedIssue: 'Opened the booking form on GitHub in a new tab. Submit it there; the cards are yours once the issue exists.',
       decideHint: (free) => `Add the label approved or rejected on the issue.${free ? ` To pin cards, comment "/gpu ${free}".` : ''} Comment "/note …" to add a note.`,
       editNodes: 'Edit nodes.json', editNodesHint: 'Nodes live in nodes.json in the repo; edit it and commit, the page rebuilds.',
       unparsable: 'Issues the scheduler could not read', unparsableHint: 'The form fields are missing or the dates are not YYYY-MM-DD. Ask the author to edit the issue.',
@@ -454,10 +457,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       nodes: 'GPU 节点', queryDate: '查询日期', backToToday: '回到今天',
       nodesHint: '每个方块是一张卡，颜色代表占用者。点一台节点可以筛选下方的时间线；改日期可以查任意一天。',
       clusterTitle: '整个集群', freeCards: (n) => `${n} 卡空闲`, maintCards: (n) => `${n} 卡维护中`, overAlloc: '超额分配',
-      myRequests: '我的申请', fNode: '目标节点', fCards: '卡数', fStart: '开始', fEnd: '结束',
+      myRequests: '我的预订', fNode: '目标节点', fCards: '卡数', fStart: '开始', fEnd: '结束',
       fPurpose: '用途说明（跑什么实验、预计显存、能否被抢占等）',
       fPurposePh: '例如：LLaMA-7B LoRA 微调，约 40GB 显存，可以晚上跑',
-      submit: '提交申请', tabQueue: '待审批', tabAll: '全部记录', tabGpus: '节点管理',
+      submit: '去 GitHub 预订', tabAll: '全部预订', tabGpus: '节点', fGpuIds: 'GPU 编号（可选）', fGpuIdsPh: '例如 0,2，留空则自动分配编号最小的空闲卡',
+      vNoRoom: (n, g) => `${g} 在这段时间只剩 ${n} 张卡空闲，请换日期或减少卡数。`, vTaken: (taken, free) => `GPU ${taken} 在这段时间已被预订；空闲的是 ${free}。`,
       schedule: '分配情况', showAllNodes: '显示全部节点', viewTimeline: '时间线', viewList: '列表',
       calSelected: '已选区间', calFull: '无空闲卡', calHint: '数字是该节点当天的空闲卡数。先点开始日，再点结束日。',
       calNoNode: '选择一个节点后，这里会显示它每天的空闲卡数。',
@@ -473,7 +477,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       noNodes: '还没有登记任何 GPU 节点。等管理员添加节点后，这里会显示每台机器的占用情况。',
       count: (n) => `${n} 条`, approvedCount: (n) => `${n} 条已批准`,
       signInToRequest: '在右上角填上你的 GitHub 用户名，就能看到自己的申请。',
-      noMine: '你还没有提交过申请。填好上面的表单，管理员审批后会在这里看到结果。',
+      noMine: '你还没有预订过。在上面选节点和日期即可。',
       withdraw: '撤回申请', confirmWithdraw: '确认撤回？', release: '提前释放', confirmRelease: '确认释放？',
       releaseHint: '提前跑完了？在 GitHub 上关闭 issue 就能释放。',
       noSchedule: '这段时间内没有已批准的分配。', noScheduleList: '目前没有已批准、尚未结束的分配。',
@@ -485,7 +489,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       notePh: '备注（可选），例如：优先级低，随时可能被抢占', approve: '批准', reject: '拒绝',
       slotsPh: (free) => `GPU 编号（可选）${free ? '，空闲：' + free : ''}`, slotsHint: '指定分给哪几张卡，例如 0,2。留空则自动分配编号最小的空闲卡。',
       vSlots: (n, max) => `请填写 ${n} 个不重复的 GPU 编号（0 到 ${max}），例如 0,2。`, auto: '自动',
-      admins: '管理员', adminsHint: '管理员 = 仓库里有 write 权限的协作者，在仓库设置里管理。', noAdmins: '还没有其他管理员。',
+      admins: '管理员', adminsHint: '管理员（仓库 write 权限）可以给 issue 加 rejected 标签取消预订，以及修改 nodes.json。', noAdmins: '还没有其他管理员。',
       adminSearchPh: '按姓名搜索，添加为管理员…', alreadyAdmin: '已是管理员', remove: '移除', tAdminAdded: '已添加管理员', tAdminRemoved: '已移除管理员',
       reopen: '撤销决定，重新审批', confirmReopen: '确认撤销决定？',
       addNode: '添加节点', gName: '节点名称', gNamePh: '例如 node-01 / 4090-server', gModel: 'GPU 型号', gModelPh: '例如 A100 / RTX 4090',
@@ -499,7 +503,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       eNoPerm: '没有权限写入，请让管理员把你设为 Contributor（协作者）。', eQuota: '存储已满，请联系管理员清理旧记录。',
       eRate: '操作太频繁，请稍后再试。', eFail: (m) => `操作失败：${m || '未知错误'}`,
       ghUser: 'GitHub 用户', updated: '更新于', nNoData: '读不到 data.json。Pages 工作流跑过了吗？',
-      withdrawHint: '在 GitHub 上关闭这个 issue 即可撤回。', reviewOnGitHub: '去 GitHub 审批', tOpenedIssue: '已在新标签页打开 GitHub 的申请表单，在那里提交即可。',
+      withdrawHint: '在 GitHub 上关闭这个 issue 即可撤回。', reviewOnGitHub: '去 GitHub 审批', tOpenedIssue: '已在新标签页打开 GitHub 的预订表单，提交后这些卡就是你的了。',
       decideHint: (free) => `在 issue 上加标签 approved 或 rejected。${free ? `要指定卡号，评论 "/gpu ${free}"。` : ''}评论 "/note …" 可以加备注。`,
       editNodes: '编辑 nodes.json', editNodesHint: '节点配置在仓库的 nodes.json 里，改完提交后页面会自动重建。',
       unparsable: '无法解析的 issue', unparsableHint: '表单字段缺失或日期不是 YYYY-MM-DD 格式，请让作者编辑 issue。',
@@ -540,7 +544,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   const state = {
     myId: null, isAdmin: false, repo: '', generatedAt: '',
     gpus: [], requests: [], problems: [],
-    adminTab: 'queue', confirmKey: null,
+    adminTab: 'all', confirmKey: null,
     queryDay: TODAY, filterGpu: null, colors: {},
     noticeKey: null, noticeKind: '', booted: false,
     admins: [],                    // ids the owner has made admins (settings/admins)
@@ -621,7 +625,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   // Admin = a collaborator with write access on the repo (data.json lists them).
   function refreshAdmin() {
     state.isAdmin = !!state.myId && state.admins.map(a => a.toLowerCase()).includes(state.myId.toLowerCase());
-    $('admin-panel').hidden = !state.isAdmin;
+    $('admin-panel').hidden = false;
     renderRole();
   }
   function renderRole() {
@@ -651,7 +655,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     renderMine(reqs, profiles);
     renderSchedule(reqs, profiles);
     renderStats(reqs, profiles);
-    if (state.isAdmin) renderAdmin(reqs, profiles);
+    renderAdmin(reqs, profiles);
   }
 
   function renderGpus(reqs, profiles) {
@@ -967,33 +971,10 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
   function renderAdmin(reqs, profiles) {
     const body = $('admin-body');
-    const pending = reqs.filter(r => r.status === 'pending');
-    $('queue-count').textContent = pending.length ? String(pending.length) : '';
     document.querySelectorAll('.tabs [role=tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === state.adminTab)));
 
-    if (state.adminTab === 'queue') {
-      if (!pending.length) { body.innerHTML = `<div class="empty">${esc(t('noPending'))}</div>`; return; }
-      body.innerHTML = `<div class="reqs">` + pending.map(r => {
-        const g = gpuById(r.gpuId);
-        let conflict = '';
-        if (g) {
-          const peak = peakOverlap(r);
-          const free = g.cards - peak;
-          if (g.status === 'maintenance') conflict = `<div class="conflict">${esc(t('nodeMaint'))}</div>`;
-          else if (r.count > free) conflict = `<div class="conflict">${esc(t('conflict', Math.max(0, free), peak, g.cards))}</div>`;
-          else conflict = `<div class="hint">${esc(t('okToApprove', free, g.cards))}</div>`;
-        }
-        const freeIdx = g ? freeCardsFor(g, r) : [];
-        const extra = `${conflict}<div class="actions">
-          <a class="sm btn ok" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(t('reviewOnGitHub'))} #${r.number} ↗</a>
-          <span class="hint">${esc(t('decideHint', freeIdx.slice(0, r.count).join(',')))}</span>
-        </div>`;
-        return reqCard(r, profiles, { extra });
-      }).join('') + `</div>`;
-      return;
-    }
     if (state.adminTab === 'all') {
-      const decided = reqs.filter(r => r.status !== 'pending');
+      const decided = reqs;
       body.innerHTML = decided.length ? `<div class="reqs">` + decided.map(r => reqCard(r, profiles, { extra: `<div class="actions"><a class="sm btn" href="${esc(r.url)}" target="_blank" rel="noopener">#${r.number} ↗</a></div>` })).join('') + `</div>` : `<div class="empty">${esc(t('noHistory'))}</div>`;
       return;
     }
@@ -1023,7 +1004,18 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     if (count > g.cards) { toast(t('vTooMany', g.name, g.cards)); return; }
     if (!start || !end || end < start) { toast(t('vDates')); return; }
     if (!purpose) { toast(t('vPurpose')); return; }
-    const url = newIssueUrl({ node: g.name, cards: String(count), start, end, purpose, title: `[GPU] ${g.name} ×${count} ${start} → ${end}` });
+    const probe = { id: '__new', gpuId, count, start, end };
+    const freeIdx = freeCardsFor(g, probe);
+    if (freeIdx.length < count) { toast(t('vNoRoom', freeIdx.length, g.name)); return; }
+    const gpuids = $('f-gpuids').value.trim();
+    if (gpuids) {
+      const idx = gpuids.split(/[\s,，、]+/).filter(Boolean).map(Number);
+      const ok = idx.length === count && idx.every(i => Number.isInteger(i) && i >= 0 && i < g.cards) && new Set(idx).size === idx.length;
+      if (!ok) { toast(t('vSlots', count, g.cards - 1)); return; }
+      const taken = idx.filter(i => !freeIdx.includes(i));
+      if (taken.length) { toast(t('vTaken', taken.join(','), freeIdx.join(','))); return; }
+    }
+    const url = newIssueUrl({ node: g.name, cards: String(count), start, end, gpuids, purpose, title: `[GPU] ${g.name} ×${count} ${start} → ${end}` });
     window.open(url, '_blank', 'noopener');
     toast(t('tOpenedIssue'));
   }

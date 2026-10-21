@@ -1,18 +1,18 @@
 # Lab GPU Scheduler
 
-A GitHub-native GPU request/approval board. Requests are GitHub issues, approvals are labels,
-and the dashboard (cluster map, per-card timeline, calendar picker, usage statistics) is a static
-page on GitHub Pages that GitHub Actions rebuilds whenever an issue changes.
+A GitHub-native GPU booking board. A booking is a GitHub issue (no approval step), and the
+dashboard (cluster map, per-card timeline, calendar picker, usage statistics) is a static page on
+GitHub Pages that GitHub Actions rebuilds whenever an issue changes.
 
 ## How it works
 
 | Action | How |
 |---|---|
-| Request GPUs | Open an issue with the **GPU request** form (the dashboard's calendar pre-fills it) |
-| Approve / reject | A collaborator with write access adds the label `approved` or `rejected` |
-| Pin specific cards | Comment `/gpu 0,2` on the issue (admins only; count must match the request) |
+| Book GPUs | Open an issue with the **GPU booking** form (the dashboard's calendar pre-fills it and refuses windows with no free cards) |
+| Pick specific cards | Fill the form's optional **GPU ids** field (e.g. `0,2`), or comment `/gpu 0,2` later; empty = lowest free cards |
 | Add a note | Comment `/note low priority, may be preempted` |
-| Withdraw / release early | Close the issue |
+| Release early | Close the issue |
+| Cancel someone's booking | An admin adds the label `rejected` |
 | Add or change nodes | Edit `nodes.json` and commit |
 | Who is an admin | Anyone with write/maintain/admin permission on this repo |
 
@@ -25,7 +25,7 @@ permission checks).
 1. **Settings → Pages → Build and deployment → Source: GitHub Actions.**
 2. **Settings → Actions → General → Workflow permissions: Read repository contents** (default is fine;
    the workflow only needs `issues: read` and `pages: write`).
-3. Create the two labels `approved` and `rejected` (Issues → Labels → New label).
+3. Create the labels `gpu-request` and `rejected` (Issues → Labels → New label).
 4. Give lab members access to the repo so they can open issues (private repo: add them as
    collaborators with *Read* or *Triage*; admins get *Write*).
 5. Push to `main`, or run the **Build and deploy GPU scheduler** workflow once by hand.

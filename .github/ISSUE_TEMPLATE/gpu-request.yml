@@ -1,12 +1,12 @@
-name: GPU request
-description: Request GPU cards on a lab node. An admin will approve by labeling this issue.
+name: GPU booking
+description: Book GPU cards on a lab node. Filing this issue is the booking; no approval needed.
 title: "[GPU] "
 labels: ["gpu-request"]
 body:
   - type: markdown
     attributes:
       value: |
-        Fill in the request below. Keep the field headings unchanged — the scheduler parses them.
+        Filing this issue books the cards for the dates below. Check the dashboard's calendar first so you pick a free window.
         Dates are inclusive, in `YYYY-MM-DD`. Close this issue when you are done early (it releases the cards).
   - type: dropdown
     id: node
@@ -40,6 +40,12 @@ body:
       placeholder: "2026-10-25"
     validations:
       required: true
+  - type: input
+    id: gpuids
+    attributes:
+      label: GPU ids
+      description: Optional. Which physical cards (nvidia-smi indices), e.g. "0,2". Leave empty to take the lowest free cards.
+      placeholder: "0,2"
   - type: textarea
     id: purpose
     attributes:
