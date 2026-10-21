@@ -322,12 +322,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       </header>
       <div class="body">
         <form id="req-form" autocomplete="off">
-          <label><span data-i18n="fNode">Node</span>
-            <select id="f-gpu" required></select>
-          </label>
-          <label><span data-i18n="fCards">Cards</span>
-            <input id="f-count" type="number" min="1" value="1" required>
-          </label>
           <div class="cal" id="cal">
             <div class="nav">
               <button type="button" class="sm" id="cal-prev">‹</button>
@@ -342,6 +336,12 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
             <label class="inline"><span data-i18n="fEnd">End</span> <input id="f-end" type="date" required></label>
             <span class="count" id="range-days"></span>
           </div>
+          <label><span data-i18n="fNode">Node</span>
+            <select id="f-gpu" required></select>
+          </label>
+          <label><span data-i18n="fCards">Cards</span>
+            <input id="f-count" type="number" min="1" value="1" required>
+          </label>
           <label class="full"><span data-i18n="fGpuIds">GPU ids (optional)</span>
             <input id="f-gpuids" type="text" class="mono" placeholder="0,2" data-i18n-placeholder="fGpuIdsPh">
           </label>
@@ -349,7 +349,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
             <textarea id="f-purpose" required data-i18n-placeholder="fPurposePh" placeholder="e.g. LoRA fine-tune of LLaMA-7B, ~40 GB VRAM, fine to run overnight"></textarea>
           </label>
           <div class="full actions">
-            <button type="submit" class="primary" id="f-submit" data-i18n="submit">Submit request</button>
+            <button type="submit" class="primary" id="f-submit" data-i18n="submit">Book</button>
           </div>
         </form>
         <div class="reqs" id="my-reqs"></div>
