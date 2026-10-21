@@ -149,6 +149,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .cal .day { position: relative; border: 1px solid transparent; border-radius: 6px; padding: 4px 2px 3px; text-align: center; cursor: pointer; background: var(--bg); display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .cal .day .n { font-size: 12px; line-height: 1.2; }
 .cal .day .f { font-size: 10px; line-height: 1.2; font-family: var(--font-mono); color: var(--muted); }
+.cal .day .f em { font-style: normal; color: var(--accent); margin-left: 2px; }
+.cal .day.edge .f em { color: var(--accent-fg); }
 .cal .day.other { opacity: 0.35; }
 .cal .day.past { opacity: 0.35; cursor: not-allowed; }
 .cal .day.nofree { background: var(--warn-soft); }
@@ -188,6 +190,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .check { flex-direction: row; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--fg); cursor: pointer; }
 .check input { width: auto; margin-top: 3px; }
 .pill.tag { background: var(--accent-soft); color: var(--accent); }
+.tl .bar.top { height: 9px; line-height: 9px; font-size: 9px; top: 3px; }
+.tl .bar.bottom { height: 9px; line-height: 9px; font-size: 9px; top: 14px; }
 .tl .bar.soft { background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(255,255,255,.28) 6px 9px); }
 
 /* timeline (gantt) */
@@ -211,7 +215,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .tl .days .d.today b { color: var(--accent); font-weight: 700; }
 .tl .row { position: relative; border-bottom: 1px solid var(--line); background-image: linear-gradient(to right, var(--line) 1px, transparent 1px); background-size: var(--dw) 100%; }
 .tl .row .we { position: absolute; top: 0; bottom: 0; background: var(--surface-2); opacity: 0.6; }
-.tl .bar { position: absolute; height: 20px; border-radius: 4px; color: #fff; font-size: 11px; line-height: 20px; padding: 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 0 0 2px var(--surface); cursor: default; }
+.tl .bar { position: absolute; top: 3px; height: 20px; border-radius: 4px; color: #fff; font-size: 11px; line-height: 20px; padding: 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 0 0 2px var(--surface); cursor: default; }
 .tl .bar.mine { outline: 2px solid var(--fg); outline-offset: -2px; }
 .tl .todayline { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); z-index: 1; pointer-events: none; }
 .tl .nodata { padding: 16px; color: var(--muted); font-size: 13px; }
@@ -423,7 +427,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       submit: 'Book', tabAll: 'All bookings', tabGpus: 'Nodes', fGpuIds: 'GPU ids (optional)', fGpuIdsPh: 'e.g. 0,2 — empty takes the lowest free cards',
       vNoRoom: (n, g) => `Only ${n} card${n === 1 ? '' : 's'} free on ${g} in that window. Pick other dates or fewer cards.`, vTaken: (taken, free) => `GPU ${taken} already booked in that window; free: ${free}.`,
       schedule: 'Allocations', showAllNodes: 'Show all nodes', viewTimeline: 'Timeline', viewList: 'List',
-      calSelected: 'Selected range', calFull: 'No free cards', calHint: 'Numbers are free cards on that node. Click a start day, then an end day.',
+      calSelected: 'Selected range', calFull: 'No free cards', calHint: 'Numbers are free cards on that node; +n are cards someone is willing to share. Click a start day, then an end day.', sharedWith: (n) => `sharing with ${n}`, calShareable: (n) => `${n} card${n === 1 ? '' : 's'} shareable with the current holder`, shared: 'shared by two people',
       calNoNode: 'Pick a node to see its free cards per day.',
       rangeDays: (n, c) => `${n} day${n === 1 ? '' : 's'} × ${c} card${c === 1 ? '' : 's'} = ${n * c} card-days`,
       dow: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
@@ -529,15 +533,26 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   const heldOn = (r, day) => { const h = heldRange(r); return !!h && h.start <= day && h.end >= day; };
   const overlaps = (a, b) => a.start <= b.end && b.start <= a.end;
   function gpuById(id) { return state.gpus.find(g => g.id === id); }
-  function allocatedOn(gpuId, day, reqs) {
-    return (reqs || allRequests()).filter(r => r.gpuId === gpuId && activeOn(r, day)).reduce((s, r) => s + (r.count || 0), 0);
+  // Card occupancy on a day: cardIndex -> bookings holding it (two when sharing).
+  function holdersOn(gpuId, day, reqs) {
+    const by = [];
+    for (const r of (reqs || allRequests())) if (r.gpuId === gpuId && activeOn(r, day)) for (const i of (state.slots[r.id] || [])) (by[i] = by[i] || []).push(r);
+    return by;
   }
-  function peakOverlap(req) {
-    const others = allRequests().filter(r => r.gpuId === req.gpuId && r.id !== req.id && r.status === 'approved' && overlaps(r, req));
-    let peak = 0;
-    const days = new Set([req.start, ...others.map(r => r.start), ...others.map(r => r.end)]);
-    for (const d of days) { if (d < req.start || d > req.end) continue; peak = Math.max(peak, others.filter(r => activeOn(r, d)).reduce((s, r) => s + r.count, 0)); }
-    return peak;
+  // Empty cards and shareable cards on a day.
+  function freeOn(g, day, reqs) {
+    const by = holdersOn(g.id, day, reqs);
+    let free = 0, shareable = 0;
+    for (let i = 0; i < g.cards; i++) { const h = by[i] || []; if (!h.length) free++; else if (h.length === 1 && h[0].share) shareable++; }
+    return { free, shareable };
+  }
+  // Can booking r join a card given the bookings already on it? Empty is fine; one shareable holder is fine.
+  function canJoin(existing, r) {
+    const ov = existing.filter(iv => overlaps(iv, r));
+    if (!ov.length) return true;
+    if (ov.some(iv => !iv.share)) return false;
+    for (let a = 0; a < ov.length; a++) for (let b = a + 1; b < ov.length; b++) if (overlaps(ov[a], ov[b])) return false;   // already two at once
+    return true;
   }
   // Stable color per person: ids sorted, first 8 get a categorical slot, the rest share a neutral.
   function colorMap(uids) {
@@ -551,19 +566,21 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   // entire window; anything that does not fit lands on overflow indices >= the node's card count.
   function assignSlots(node, reqs) {
     const items = reqs.filter(r => r.gpuId === node.id && r.status === 'approved').sort((a, b) => a.start.localeCompare(b.start) || (a.createdAt || '').localeCompare(b.createdAt || ''));
-    const busy = [];   // busy[cardIndex] = list of {start, end}
-    const fits = (idx, r) => !(busy[idx] || []).some(iv => overlaps(iv, r));
-    const take = (idx, r) => { (busy[idx] = busy[idx] || []).push({ start: r.start, end: r.end }); };
+    const busy = [];   // busy[cardIndex] = list of {start, end, share}
+    const exclusive = (idx, r) => !(busy[idx] || []).some(iv => overlaps(iv, r));
+    const joinable = (idx, r) => canJoin(busy[idx] || [], r);
+    const take = (idx, r) => { (busy[idx] = busy[idx] || []).push({ start: r.start, end: r.end, share: !!r.share }); };
     const out = {};
     const pinned = items.filter(r => Array.isArray(r.decision && r.decision.slots) && r.decision.slots.length === r.count);
     for (const r of pinned) { out[r.id] = r.decision.slots.map(Number); for (const i of out[r.id]) take(i, r); }
     for (const r of items) {
       if (out[r.id]) continue;
       const got = [];
-      for (let i = 0; i < node.cards && got.length < r.count; i++) if (fits(i, r)) got.push(i);
+      for (let i = 0; i < node.cards && got.length < r.count; i++) if (exclusive(i, r)) got.push(i);        // empty cards first
+      for (let i = 0; i < node.cards && got.length < r.count; i++) if (!got.includes(i) && joinable(i, r)) got.push(i);   // then shareable ones
       let over = node.cards;
-      while (got.length < r.count) { if (fits(over, r)) got.push(over); over++; }
-      out[r.id] = got; for (const i of got) take(i, r);
+      while (got.length < r.count) { if (exclusive(over, r)) got.push(over); over++; }
+      out[r.id] = got.sort((a, b) => a - b); for (const i of got) take(i, r);
     }
     return out;
   }
@@ -730,18 +747,22 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     const byUser = {};   // cards held per person across the cluster, for the stacked bar
     grid.innerHTML = state.gpus.map(g => {
       const active = reqs.filter(r => r.gpuId === g.id && activeOn(r, day)).sort((a, b) => a.start.localeCompare(b.start));
-      const used = active.reduce((s, r) => s + (r.count || 0), 0);
+      const by = holdersOn(g.id, day, reqs);
+      const used = Math.min(g.cards, by.filter((h, i) => i < g.cards && h && h.length).length);
       const maint = g.status === 'maintenance';
-      if (!maint) { totalCards += g.cards; usedCards += Math.min(used, g.cards); for (const r of active) byUser[r.uid] = (byUser[r.uid] || 0) + r.count; }
+      if (!maint) { totalCards += g.cards; usedCards += used; for (let i = 0; i < g.cards; i++) for (const r of (by[i] || [])) byUser[r.uid] = (byUser[r.uid] || 0) + 1 / by[i].length; }
       else maintCards += g.cards;
-      // one square per physical card, index i = GPU i, holder from the card assignment
-      const slots = [];
-      for (const r of active) for (const i of (state.slots[r.id] || [])) slots[i] = r;
+      // one square per physical card, index i = GPU i; a shared card shows both holders' colors
       let squares = '';
-      for (let i = 0; i < Math.max(g.cards, slots.length); i++) {
-        const r = slots[i];
-        if (!r) squares += `<i title="GPU ${i} · ${esc(t('free', 1))}"></i>`;
-        else squares += `<i class="${i >= g.cards ? 'over' : 'held'}" style="${i >= g.cards ? '' : `background:${colors[r.uid]}`}" title="GPU ${i} · ${esc(nameOf(profiles, r.uid))} · ${esc(r.start)} → ${esc(r.end)}${i >= g.cards ? ' · ' + esc(t('overAlloc')) : ''}"></i>`;
+      for (let i = 0; i < Math.max(g.cards, by.length); i++) {
+        const h = by[i] || [];
+        if (!h.length) squares += `<i title="GPU ${i} · ${esc(t('free', 1))}"></i>`;
+        else if (i >= g.cards) squares += `<i class="over" title="GPU ${i} · ${esc(h.map(r => nameOf(profiles, r.uid)).join(' + '))} · ${esc(t('overAlloc'))}"></i>`;
+        else {
+          const bg = h.length === 1 ? `background:${colors[h[0].uid]}` : `background:linear-gradient(135deg, ${colors[h[0].uid]} 50%, ${colors[h[1].uid]} 50%)`;
+          const who = h.map(r => `${nameOf(profiles, r.uid)} · ${r.start} → ${r.end}`).join('\n');
+          squares += `<i class="held" style="${bg}" title="GPU ${i}${h.length > 1 ? ' · ' + esc(t('shared')) : (h[0].share ? ' · ' + esc(t('tagShare')) : '')}&#10;${esc(who)}"></i>`;
+        }
       }
       const who = active.map(r => `<span title="${esc(r.start)} → ${esc(r.end)}"><i class="dot" style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colors[r.uid]};margin-right:4px;vertical-align:0"></i>${esc(nameOf(profiles, r.uid))} ×${r.count} <span class="mono">${esc(t('until'))} ${esc(r.end.slice(5))}</span></span>`).join('');
       const selected = state.filterGpu === g.id ? ' selected' : '';
@@ -766,11 +787,12 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       const users = Object.entries(byUser).sort((a, b) => b[1] - a[1]);
       const held = users.reduce((s, u) => s + u[1], 0);
       const free = Math.max(0, totalCards - Math.min(held, totalCards));
+      const realCount = {}; for (const r of reqs) if (activeOn(r, day) && gpuById(r.gpuId) && gpuById(r.gpuId).status !== 'maintenance') realCount[r.uid] = (realCount[r.uid] || 0) + r.count;
       const seg = (n, style, title) => n > 0 ? `<i style="flex:${n} 0 0;${style}" title="${esc(title)}"></i>` : '';
       cluster.innerHTML = `
         <div class="top"><h3>${esc(t('clusterTitle'))}</h3><span class="count">${esc(dayLabel)} · ${usedCards}/${totalCards} · ${totalCards ? Math.round(usedCards / totalCards * 100) : 0}%</span></div>
-        <div class="stack">${users.map(([u, n]) => seg(Math.min(n, totalCards), `background:${colors[u]}`, `${nameOf(profiles, u)} ×${n}`)).join('')}${seg(free, '', t('freeCards', free)).replace('<i ', '<i class="free" ')}${seg(maintCards, '', t('maintCards', maintCards)).replace('<i ', '<i class="maint" ')}</div>
-        <div class="legend">${users.map(([u, n]) => `<span><i style="background:${colors[u]}"></i>${esc(nameOf(profiles, u))} ×${n}</span>`).join('')}<span><i style="background:var(--surface-2);border:1px dashed var(--line)"></i>${esc(t('freeCards', free))}</span>${maintCards ? `<span><i class="maint" style="background:repeating-linear-gradient(45deg,var(--surface-2) 0 3px,var(--bg) 3px 6px)"></i>${esc(t('maintCards', maintCards))}</span>` : ''}</div>`;
+        <div class="stack">${users.map(([u, n]) => seg(Math.min(n, totalCards), `background:${colors[u]}`, `${nameOf(profiles, u)} ×${realCount[u] || 0}`)).join('')}${seg(free, '', t('freeCards', free)).replace('<i ', '<i class="free" ')}${seg(maintCards, '', t('maintCards', maintCards)).replace('<i ', '<i class="maint" ')}</div>
+        <div class="legend">${users.map(([u, n]) => `<span><i style="background:${colors[u]}"></i>${esc(nameOf(profiles, u))} ×${realCount[u] || 0}</span>`).join('')}<span><i style="background:var(--surface-2);border:1px dashed var(--line)"></i>${esc(t('freeCards', free))}</span>${maintCards ? `<span><i class="maint" style="background:repeating-linear-gradient(45deg,var(--surface-2) 0 3px,var(--bg) 3px 6px)"></i>${esc(t('maintCards', maintCards))}</span>` : ''}</div>`;
     }
   }
 
@@ -793,7 +815,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       if (past) cls.push('past');
       if (day === TODAY) cls.push('today');
       let freeTxt = '';
-      if (g) { const free = g.cards - allocatedOn(g.id, day, reqs); freeTxt = String(Math.max(0, free)); if (free <= 0) cls.push('nofree'); }
+      if (g) { const f = freeOn(g, day, reqs); freeTxt = `${f.free}${f.shareable ? `<em title="${esc(t('calShareable', f.shareable))}">+${f.shareable}</em>` : ''}`; if (f.free + f.shareable <= 0) cls.push('nofree'); }
       if (start && end && day >= start && day <= end) cls.push(day === start || day === end ? 'edge' : 'in');
       html += `<div class="${cls.join(' ')}" data-day="${day}" role="button" tabindex="${past ? -1 : 0}"><span class="n">${parse(day).getDate()}</span>${freeTxt !== '' ? `<span class="f">${freeTxt}</span>` : ''}</div>`;
     }
@@ -901,12 +923,14 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       rows += `<div class="row node-row" style="height:${ROW}px">${weekends.map(i => `<div class="we" style="left:${i * DW}px;width:${DW}px"></div>`).join('')}</div>`;
       for (let i = 0; i < cardRows; i++) {
         let barsHTML = weekends.map(w => `<div class="we" style="left:${w * DW}px;width:${DW}px"></div>`).join('');
-        for (const b of bars) {
-          if (!(state.slots[b.id] || []).includes(i)) continue;
+        const onRow = bars.filter(b => (state.slots[b.id] || []).includes(i)).sort((a, c) => a.start.localeCompare(c.start));
+        for (const b of onRow) {
           const s = Math.max(0, daysBetween(wStart, b.start)), e = Math.min(state.tlDays - 1, daysBetween(wStart, b.end));
           const label = nameOf(profiles, b.uid);
           const flags = [b.share ? t('tagShare') : '', b.preempt ? t('tagPreempt') : ''].filter(Boolean).join(', ');
-          barsHTML += `<div class="bar ${b.uid === state.myId ? 'mine' : ''} ${b.share || b.preempt ? 'soft' : ''}" style="left:${s * DW + 2}px;width:${(e - s + 1) * DW - 4}px;top:3px;background:${colors[b.uid]}" title="GPU ${i} · ${esc(label)} ×${b.count} · ${esc(b.start)} → ${esc(b.end)}${flags ? ' · ' + esc(flags) : ''}&#10;${esc(b.purpose)}">${esc(label)}${flags ? ' ·' : ''}</div>`;
+          const mate = onRow.find(o => o !== b && overlaps(o, b));
+          const half = mate ? (onRow.indexOf(b) < onRow.indexOf(mate) ? 'top' : 'bottom') : '';
+          barsHTML += `<div class="bar ${b.uid === state.myId ? 'mine' : ''} ${b.share || b.preempt ? 'soft' : ''} ${half}" style="left:${s * DW + 2}px;width:${(e - s + 1) * DW - 4}px;background:${colors[b.uid]}" title="GPU ${i} · ${esc(label)} ×${b.count} · ${esc(b.start)} → ${esc(b.end)}${flags ? ' · ' + esc(flags) : ''}${mate ? ' · ' + esc(t('sharedWith', nameOf(profiles, mate.uid))) : ''}&#10;${esc(b.purpose)}">${esc(label)}${flags ? ' ·' : ''}</div>`;
         }
         rows += `<div class="row ${i >= node.cards ? 'over' : ''}" style="height:${ROW}px">${barsHTML}</div>`;
       }
@@ -943,7 +967,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       let dayUsed = 0;
       for (const g of nodes) {
         const onNode = held.filter(r => r.gpuId === g.id && heldOn(r, day));
-        const sum = Math.min(g.cards, onNode.reduce((s, r) => s + r.count, 0));  // capped at the node's cards
+        const occupied = new Set(); for (const r of onNode) for (const i of (state.slots[r.id] || [])) if (i < g.cards) occupied.add(i);
+        const sum = occupied.size;   // a card shared by two people counts once
         byNode[g.id] += sum; dayUsed += sum;
         for (const r of onNode) byUser[r.uid] = (byUser[r.uid] || 0) + r.count;
       }
@@ -1119,10 +1144,12 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     render();
   });
   // cards on this node free for the request's whole window (for the approval hint)
+  // Cards on this node that booking r could take for its whole window: empty ones, or ones whose only
+  // holder is willing to share. Used by the booking check and the GPU-id validation.
   function freeCardsFor(g, r) {
-    const used = new Set();
-    for (const o of allRequests()) if (o.gpuId === g.id && o.id !== r.id && o.status === 'approved' && overlaps(o, r)) for (const i of (state.slots[o.id] || [])) used.add(i);
-    const out = []; for (let i = 0; i < g.cards; i++) if (!used.has(i)) out.push(i);
+    const busy = [];
+    for (const o of allRequests()) if (o.gpuId === g.id && o.id !== r.id && o.status === 'approved' && overlaps(o, r)) for (const i of (state.slots[o.id] || [])) (busy[i] = busy[i] || []).push({ start: o.start, end: o.end, share: !!o.share });
+    const out = []; for (let i = 0; i < g.cards; i++) if (canJoin(busy[i] || [], r)) out.push(i);
     return out;
   }
   document.querySelector('.tabs').addEventListener('click', (ev) => { const tab = ev.target.closest('[role=tab]'); if (!tab) return; state.adminTab = tab.dataset.tab; render(); });

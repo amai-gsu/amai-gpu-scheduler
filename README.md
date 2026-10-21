@@ -15,6 +15,9 @@ the moment you submit it, and the page refuses windows where the cards are alrea
 3. Run with the cards you were given, e.g. `CUDA_VISIBLE_DEVICES=0,2`. Ids match `nvidia-smi` on
    the node.
 4. Done early? Click **Release early** on your booking so others can use the cards.
+   Tick **Can share** when you book if you won't use all the VRAM: one more person can then book
+   the same cards for the same dates (the calendar shows those as `+n`). Tick **Can be preempted**
+   if someone with an urgent deadline may kill your job.
 5. The sign-in box also asks for your real name; it is shown on your bookings so everyone knows
    who holds the cards. Sign in again any time to change it.
 
