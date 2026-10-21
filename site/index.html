@@ -269,7 +269,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         <img id="me-avatar" alt="" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'/>">
         <div class="who">
           <b id="me-name" data-i18n="notSignedIn">Not signed in</b>
-          <span class="actions" style="gap:6px"><span class="role" id="me-role" data-i18n="roleGuest">Guest</span><button class="link" id="name-btn" type="button" hidden data-i18n="setName">Set my name</button><button class="link" id="signin-btn" type="button" data-i18n="signIn">Sign in</button></span>
+          <span class="actions" style="gap:6px"><span class="role" id="me-role" data-i18n="roleGuest">Guest</span><button class="link" id="signin-btn" type="button" data-i18n="signIn">Sign in</button></span>
         </div>
       </div>
     </div>
@@ -283,15 +283,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       <form id="signin-form" autocomplete="off">
         <label class="full"><span data-i18n="tokenLabel">Token</span><input id="token-input" type="password" placeholder="github_pat_…" autocomplete="off"></label>
         <div class="full actions"><button type="submit" class="primary" data-i18n="tokenSave">Sign in</button><span class="hint" data-i18n="tokenHint">Stored only in this browser. It is sent to api.github.com and nowhere else.</span></div>
-      </form>
-    </div>
-  </div>
-  <div class="panel" id="name-panel" hidden>
-    <header><h2 data-i18n="setNameTitle">How should your name appear?</h2><button class="link" id="name-close" type="button">✕</button></header>
-    <div class="body">
-      <form id="name-form" autocomplete="off">
-        <label class="full"><span data-i18n="nameLabel">Display name</span><input id="name-input" type="text" maxlength="60" placeholder="Wei Hu"></label>
-        <div class="full actions"><button type="submit" class="primary" data-i18n="nameSave">Save</button><span class="hint" data-i18n="nameHint">Saved to members.json in the repository, so everyone sees it. Leave empty to go back to your GitHub profile name.</span></div>
       </form>
     </div>
   </div>
@@ -471,8 +462,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       eNoPerm: 'GitHub refused the write. Your token needs the public_repo scope, and your account needs Write access on this repository.', eQuota: 'Storage is full. Ask the admin to clear old records.',
       eRate: 'Too many actions at once. Try again in a moment.', eFail: (m) => `Failed: ${m || 'unknown error'}`,
       updated: 'updated', nNoData: 'Could not load bookings.json from GitHub. Check the repository and try again.',
-      setName: 'Set my name', setNameTitle: 'How should your name appear?', nameLabel: 'Display name', nameSave: 'Save', tNameSaved: 'Name saved',
-      nameHint: 'Saved to members.json in the repository, so everyone sees it. Leave empty to go back to your GitHub profile name.',
       roleViewer: 'Viewer', signIn: 'Sign in', signOut: 'Sign out', signInTitle: 'Sign in with a GitHub token (one time)', tokenLabel: 'Token', tokenSave: 'Sign in',
       tokenHint: 'Stored only in this browser. It is sent to api.github.com and nowhere else.',
       signInSteps: (url, repo) => [
@@ -512,7 +501,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
   const state = {
     myId: null, isAdmin: false, canWrite: false, token: null, repo: REPO, generatedAt: '',
-    gpus: [], requests: [], sha: null, nodesSha: null, members: {},
+    gpus: [], requests: [], sha: null, nodesSha: null,
     adminTab: 'all', confirmKey: null,
     queryDay: TODAY, filterGpu: null, colors: {},
     noticeKey: null, noticeKind: '', booted: false,
@@ -609,7 +598,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     for (const id of new Set(ids.filter(Boolean))) {
       const c = nameCache[id];
       if (!c || Date.now() - c.at > NAME_TTL) fetchName(id);
-      out[id] = { id, name: state.members[id] || (c && c.name) || id, login: id, avatarUrl: `https://github.com/${encodeURIComponent(id)}.png?size=40` };
+      out[id] = { id, name: (c && c.name) || id, login: id, avatarUrl: `https://github.com/${encodeURIComponent(id)}.png?size=40` };
     }
     return out;
   }
@@ -621,8 +610,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     renderRole();
   }
   function renderRole() {
-    $('me-name').textContent = state.myId ? (state.members[state.myId] || (nameCache[state.myId] && nameCache[state.myId].name) || state.myId) : t('notSignedIn');
-    $('name-btn').hidden = !state.canWrite;
+    $('me-name').textContent = state.myId ? ((nameCache[state.myId] && nameCache[state.myId].name) || state.myId) : t('notSignedIn');
     const roleEl = $('me-role');
     roleEl.textContent = state.isAdmin ? t('roleAdmin') : (state.canWrite ? t('roleMember') : (state.myId ? t('roleViewer') : t('roleGuest')));
     roleEl.className = 'role' + (state.isAdmin ? ' admin' : '');
@@ -647,8 +635,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     return { sha: f.sha, data: JSON.parse(b64dec(f.content)) };
   }
   async function loadAll() {
-    const [b, n, m] = await Promise.all([readFile('bookings.json'), readFile('nodes.json'), readFile('members.json').catch(() => ({ data: { names: {} } }))]);
-    state.members = (m.data && m.data.names) || {};
+    const [b, n] = await Promise.all([readFile('bookings.json'), readFile('nodes.json')]);
     state.sha = b.sha; state.requests = (b.data.bookings || []).map(normalize);
     state.nodesSha = n.sha; state.gpus = (n.data || []).slice().sort((a, c) => a.name.localeCompare(c.name));
     state.generatedAt = new Date().toISOString();
@@ -668,17 +655,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       try {
         const res = await gh(`/repos/${state.repo}/contents/bookings.json`, { method: 'PUT', body: JSON.stringify({ message, sha: cur.sha, branch: 'main', content: b64enc(JSON.stringify({ bookings: list }, null, 2) + '\n') }) });
         state.sha = res.content.sha; state.requests = list.map(normalize); return true;
-      } catch (e) { if (e.status !== 409 || attempt) throw e; }
-    }
-  }
-  async function writeMembers(mutate, message) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      let cur; try { cur = await readFile('members.json'); } catch { cur = { sha: undefined, data: { names: {} } }; }
-      const names = mutate({ ...(cur.data.names || {}) });
-      try {
-        const body = { message, branch: 'main', content: b64enc(JSON.stringify({ names }, null, 2) + '\n') }; if (cur.sha) body.sha = cur.sha;
-        await gh(`/repos/${state.repo}/contents/members.json`, { method: 'PUT', body: JSON.stringify(body) });
-        state.members = names; return true;
       } catch (e) { if (e.status !== 409 || attempt) throw e; }
     }
   }
@@ -1162,18 +1138,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       toast(state.canWrite ? t('tSignedIn', state.myId) : t('tSignedInRO', state.myId));
       await loadAll();
     } catch (e) { state.token = null; toast(errMsg(e)); }
-    refreshAdmin(); render();
-  });
-
-  $('name-btn').addEventListener('click', () => { $('name-input').value = state.members[state.myId] || ''; $('name-panel').hidden = false; $('name-input').focus(); });
-  $('name-close').addEventListener('click', () => { $('name-panel').hidden = true; });
-  $('name-form').addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    const name = $('name-input').value.trim();
-    try {
-      await writeMembers(names => { if (name) names[state.myId] = name; else delete names[state.myId]; return names; }, `${name ? 'Set' : 'Clear'} display name for ${state.myId}`);
-      $('name-panel').hidden = true; toast(t('tNameSaved'));
-    } catch (e) { toast(errMsg(e)); }
     refreshAdmin(); render();
   });
 
