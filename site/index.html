@@ -348,14 +348,17 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
           <label><span data-i18n="fNode">Node</span>
             <select id="f-gpu" required></select>
           </label>
-          <label><span data-i18n="fCards">Cards</span>
-            <input id="f-count" type="number" min="1" value="1" required>
+          <label><span data-i18n="fGpuIds">GPU ids</span>
+            <input id="f-gpuids" type="text" class="mono" placeholder="0,2" required data-i18n-placeholder="fGpuIdsPh">
           </label>
-          <label class="full"><span data-i18n="fGpuIds">GPU ids (optional)</span>
-            <input id="f-gpuids" type="text" class="mono" placeholder="0,2" data-i18n-placeholder="fGpuIdsPh">
+          <label><span data-i18n="fModel">Model size</span>
+            <input id="f-model" type="text" placeholder="e.g. 7B" required maxlength="40">
           </label>
-          <label class="full"><span data-i18n="fPurpose">What for (project or deadline, roughly how much VRAM)</span>
-            <textarea id="f-purpose" required data-i18n-placeholder="fPurposePh" placeholder="e.g. ACL submission: training a 1B model, ~20 GB per card"></textarea>
+          <label><span data-i18n="fVram">Expected VRAM per card (GB)</span>
+            <input id="f-vram" type="number" min="1" max="200" placeholder="20" required>
+          </label>
+          <label class="full"><span data-i18n="fPurpose">What for (project or deadline)</span>
+            <textarea id="f-purpose" required data-i18n-placeholder="fPurposePh" placeholder="e.g. ACL submission, fine-tuning for the main table"></textarea>
           </label>
           <div class="full checks">
             <label class="check"><input id="f-share" type="checkbox"> <span data-i18n="fShare">Can share: others may run on these cards too (I'm not using all the VRAM)</span></label>
@@ -417,12 +420,13 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       nodes: 'GPU nodes', queryDate: 'Date', backToToday: 'Back to today',
       nodesHint: 'Each square is one card, colored by who holds it. Click a node to filter the timeline below; change the date to see any day.',
       clusterTitle: 'Whole cluster', freeCards: (n) => `${n} free`, maintCards: (n) => `${n} in maintenance`, overAlloc: 'over-allocated',
-      myRequests: 'My bookings', fNode: 'Node', fCards: 'Cards', fStart: 'Start', fEnd: 'End',
-      fPurpose: 'What for (project or deadline, roughly how much VRAM)',
-      fPurposePh: 'e.g. ACL submission: training a 1B model, ~20 GB per card',
+      myRequests: 'My bookings', fNode: 'Node', fStart: 'Start', fEnd: 'End',
+      fPurpose: 'What for (project or deadline)',
+      fPurposePh: 'e.g. ACL submission, fine-tuning for the main table',
+      fModel: 'Model size', fVram: 'Expected VRAM per card (GB)', vModel: 'Say how big the model is (e.g. 7B).', vVram: 'Give a rough VRAM estimate per card in GB.', perCard: 'GB/card',
       fShare: 'Can share: others may run on these cards too (I’m not using all the VRAM)', fPreempt: 'Can be preempted: if someone needs the cards urgently, they may kill my job',
       tagShare: 'shareable', tagPreempt: 'preemptible',
-      submit: 'Book', tabAll: 'All bookings', tabGpus: 'Nodes', fGpuIds: 'GPU ids (optional)', fGpuIdsPh: 'e.g. 0,2 — empty takes the lowest free cards',
+      submit: 'Book', tabAll: 'All bookings', tabGpus: 'Nodes', fGpuIds: 'GPU ids', fGpuIdsPh: 'e.g. 0,2 — the calendar shows which are free', vGpuIds: 'Enter the GPU ids you want, e.g. 0,2.',
       vNoRoom: (n, g) => `Only ${n} card${n === 1 ? '' : 's'} free on ${g} in that window. Pick other dates or fewer cards.`, vTaken: (taken, free) => `GPU ${taken} already booked in that window; free: ${free}.`,
       schedule: 'Allocations', showAllNodes: 'Show all nodes', viewTimeline: 'Timeline', viewList: 'List',
       calSelected: 'Selected range', calFull: 'No free cards', calHint: 'Numbers are free cards on that node; +n are cards someone is willing to share. Click a start day, then an end day.', sharedWith: (n) => `sharing with ${n}`, calShareable: (n) => `${n} card${n === 1 ? '' : 's'} shareable with the current holder`, shared: 'shared by two people',
@@ -527,6 +531,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     if (r.status === 'released') { const closed = (r.closedAt || '').slice(0, 10); return { start: r.start, end: closed && closed < r.end ? closed : r.end }; }
     return null;
   }
+  const parseIds = (raw) => String(raw || '').split(/[\s,，、]+/).filter(Boolean).map(Number);
   const activeOn = (r, day) => r.status === 'approved' && r.start <= day && r.end >= day;
   const heldOn = (r, day) => { const h = heldRange(r); return !!h && h.start <= day && h.end >= day; };
   const overlaps = (a, b) => a.start <= b.end && b.start <= a.end;
@@ -817,7 +822,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       html += `<div class="${cls.join(' ')}" data-day="${day}" role="button" tabindex="${past ? -1 : 0}"><span class="n">${parse(day).getDate()}</span>${freeTxt !== '' ? `<span class="f">${freeTxt}</span>` : ''}</div>`;
     }
     $('cal-grid').innerHTML = html;
-    const count = parseInt($('f-count').value, 10) || 1;
+    const count = parseIds($('f-gpuids').value).length || 1;
     $('range-days').textContent = start && end && end >= start ? t('rangeDays', daysBetween(start, end) + 1, count) : '';
   }
   function pickDay(day) {
@@ -833,7 +838,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   $('cal-prev').addEventListener('click', () => shiftMonth(-1));
   $('cal-next').addEventListener('click', () => shiftMonth(1));
   $('f-gpu').addEventListener('change', () => renderCalendar(allRequests()));
-  $('f-count').addEventListener('input', () => renderCalendar(allRequests()));
+  $('f-gpuids').addEventListener('input', () => renderCalendar(allRequests()));
   for (const id of ['f-start', 'f-end']) $(id).addEventListener('change', () => {
     if ($('f-end').value < $('f-start').value) $('f-end').value = $('f-start').value;
     if ($('f-start').value) state.calMonth = $('f-start').value.slice(0, 7);
@@ -848,6 +853,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     const idx = state.slots[r.id];
     parts.push(`<span class="mono">${esc(g ? g.name : t('nodeDeleted'))} ×${esc(r.count)}${idx && idx.length ? ` · GPU ${esc(idx.join(','))}${r.decision && r.decision.slots ? '' : ' (' + esc(t('auto')) + ')'}` : ''}</span>`);
     parts.push(`<span class="mono">${esc(r.start)} → ${esc(r.end)}</span>`);
+    if (r.modelSize || r.vramGb) parts.push(`<span class="mono">${esc([r.modelSize, r.vramGb ? `~${r.vramGb} ${t('perCard')}` : ''].filter(Boolean).join(' · '))}</span>`);
     parts.push(`<span>${esc(t('submittedOn'))} ${esc((r.createdAt || '').slice(0, 10))}</span>`);
     let noteHTML = '';
     if (dec && (dec.note || decider)) noteHTML = `<div class="note">${esc(decider)} · ${esc(tStatus(dec.status))}${dec.note ? ': ' + esc(dec.note) : ''}</div>`;
@@ -1085,23 +1091,21 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   async function onSubmitRequest(ev) {
     ev.preventDefault();
     if (!state.canWrite) { toast(t('vSignIn')); return; }
-    const gpuId = $('f-gpu').value, count = parseInt($('f-count').value, 10), start = $('f-start').value, end = $('f-end').value, purpose = $('f-purpose').value.trim();
+    const gpuId = $('f-gpu').value, start = $('f-start').value, end = $('f-end').value, purpose = $('f-purpose').value.trim();
+    const modelSize = $('f-model').value.trim(), vram = parseInt($('f-vram').value, 10);
     const g = gpuById(gpuId);
     if (!g) { toast(t('vPickNode')); return; }
-    if (!(count >= 1)) { toast(t('vCards')); return; }
-    if (count > g.cards) { toast(t('vTooMany', g.name, g.cards)); return; }
+    const idx = parseIds($('f-gpuids').value);
+    if (!idx.length) { toast(t('vGpuIds')); $('f-gpuids').focus(); return; }
+    const count = idx.length;
+    if (!idx.every(i => Number.isInteger(i) && i >= 0 && i < g.cards) || new Set(idx).size !== idx.length) { toast(t('vSlots', count, g.cards - 1)); return; }
     if (!start || !end || end < start) { toast(t('vDates')); return; }
+    if (!modelSize) { toast(t('vModel')); $('f-model').focus(); return; }
+    if (!(vram >= 1)) { toast(t('vVram')); $('f-vram').focus(); return; }
     if (!purpose) { toast(t('vPurpose')); return; }
-    const gpuids = $('f-gpuids').value.trim();
-    let slots = null;
-    if (gpuids) {
-      const idx = gpuids.split(/[\s,，、]+/).filter(Boolean).map(Number);
-      const ok = idx.length === count && idx.every(i => Number.isInteger(i) && i >= 0 && i < g.cards) && new Set(idx).size === idx.length;
-      if (!ok) { toast(t('vSlots', count, g.cards - 1)); return; }
-      slots = idx.sort((x, y) => x - y);
-    }
+    const slots = idx.slice().sort((x, y) => x - y);
     const btn = $('f-submit'); btn.disabled = true;
-    const item = { id: 'b_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), uid: state.myId, gpuId, count, start, end, purpose, slots, share: $('f-share').checked, preempt: $('f-preempt').checked, createdAt: new Date().toISOString() };
+    const item = { id: 'b_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), uid: state.myId, gpuId, count, start, end, purpose, modelSize, vramGb: vram, slots, share: $('f-share').checked, preempt: $('f-preempt').checked, createdAt: new Date().toISOString() };
     try {
       const ok = await writeBookings(list => {
         // re-check against the freshest file so two people cannot double-book
@@ -1109,10 +1113,10 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         state.slots = {}; for (const n of state.gpus) Object.assign(state.slots, assignSlots(n, allRequests()));
         const free = freeCardsFor(g, item);
         if (free.length < count) { toast(t('vNoRoom', free.length, g.name)); return false; }
-        if (slots) { const taken = slots.filter(i => !free.includes(i)); if (taken.length) { toast(t('vTaken', taken.join(','), free.join(','))); return false; } }
+        const taken = slots.filter(i => !free.includes(i)); if (taken.length) { toast(t('vTaken', taken.join(','), free.join(','))); return false; }
         list.unshift(item); return list;
       }, `Book ${g.name} ×${count} ${start}→${end} (${state.myId})`);
-      if (ok) { $('f-purpose').value = ''; $('f-gpuids').value = ''; $('f-count').value = '1'; $('f-share').checked = false; $('f-preempt').checked = false; state.picking = false; toast(t('tSubmitted')); }
+      if (ok) { $('f-purpose').value = ''; $('f-gpuids').value = ''; $('f-model').value = ''; $('f-vram').value = ''; $('f-share').checked = false; $('f-preempt').checked = false; state.picking = false; toast(t('tSubmitted')); }
     } catch (e) { toast(errMsg(e)); }
     btn.disabled = false; render();
   }
