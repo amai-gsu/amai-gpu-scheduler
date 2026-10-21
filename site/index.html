@@ -118,6 +118,7 @@ form > .full { grid-column: 1 / -1; }
 label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); min-width: 0; }
 label.inline { flex-direction: row; align-items: center; gap: 6px; }
 label.inline input, label.inline select { width: auto; padding: 4px 6px; }
+#acct-switch { width: auto; padding: 2px 6px; font-size: 12px; }
 input, select, textarea, button { font: inherit; color: inherit; }
 input, select, textarea { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
 textarea { resize: vertical; min-height: 60px; }
@@ -279,7 +280,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         <img id="me-avatar" alt="" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'/>">
         <div class="who">
           <b id="me-name" data-i18n="notSignedIn">Not signed in</b>
-          <span class="actions" style="gap:6px"><span class="role" id="me-role" data-i18n="roleGuest">Guest</span><button class="link" id="signin-btn" type="button" data-i18n="signIn">Sign in</button></span>
+          <span class="actions" style="gap:6px"><span class="role" id="me-role" data-i18n="roleGuest">Guest</span><select id="acct-switch" hidden title="Switch account"></select><button class="link" id="signin-btn" type="button" data-i18n="signIn">Sign in</button><button class="link" id="signout-btn" type="button" hidden data-i18n="signOut">Sign out</button></span>
         </div>
       </div>
     </div>
@@ -479,7 +480,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       eRate: 'Too many actions at once. Try again in a moment.', eFail: (m) => `Failed: ${m || 'unknown error'}`,
       updated: 'updated', nNoData: 'Could not load bookings.json from GitHub. Check the repository and try again.',
       nameLabel: 'Your real name (shown on your bookings so everyone knows who holds the cards)', vName: 'Please enter your real name.',
-      roleViewer: 'Viewer', signIn: 'Sign in', signOut: 'Sign out', signInTitle: 'Sign in with a GitHub token (one time)', tokenLabel: 'Token', tokenSave: 'Sign in',
+      roleViewer: 'Viewer', signIn: 'Sign in', signOut: 'Sign out', addAccount: 'Add account…', signInTitle: 'Sign in with a GitHub token (one time)', tokenLabel: 'Token', tokenSave: 'Sign in',
       tokenHint: 'Stored only in this browser. It is sent to api.github.com and nowhere else.',
       signInSteps: (url, repo) => [
         `Open <a href="${url}" target="_blank" rel="noopener">GitHub → New personal access token (classic)</a> (sign in to GitHub if asked).`,
@@ -649,7 +650,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     roleEl.textContent = state.isAdmin ? t('roleAdmin') : (state.canWrite ? t('roleMember') : (state.myId ? t('roleViewer') : t('roleGuest')));
     roleEl.className = 'role' + (state.isAdmin ? ' admin' : '');
     $('me-avatar').src = state.myId ? `https://github.com/${encodeURIComponent(state.myId)}.png?size=64` : "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'/>";
-    $('signin-btn').textContent = state.myId ? t('signOut') : t('signIn');
+    renderAccounts();
     $('f-submit').disabled = !state.canWrite;
   }
   // ---------- GitHub Contents API ----------
@@ -710,6 +711,16 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     return t('eFail', `HTTP ${e.status}`);
   };
   // sign in: validate the token, learn login + permission on this repo
+  // Several accounts can be kept in this browser (e.g. the lab account and a personal one); one is current.
+  function loadAccounts() {
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem('gpu-accounts') || '[]'); } catch {}
+    if (!list.length) { try { const legacy = localStorage.getItem('gpu-token'); if (legacy) list = [{ login: '', token: legacy }]; } catch {} }
+    return list.filter(a => a && a.token);
+  }
+  function saveAccounts(list, current) {
+    try { localStorage.setItem('gpu-accounts', JSON.stringify(list)); localStorage.setItem('gpu-current', current || ''); localStorage.removeItem('gpu-token'); } catch {}
+  }
   async function signIn(token) {
     state.token = token;
     const me = await gh('/user');
@@ -718,12 +729,30 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     const perm = repo.permissions || {};
     state.canWrite = !!(perm.push || perm.maintain || perm.admin);
     state.isAdmin = !!(perm.maintain || perm.admin);
-    try { localStorage.setItem('gpu-token', token); } catch {}
+    const list = loadAccounts().filter(a => a.login !== me.login && a.token !== token);
+    list.push({ login: me.login, token });
+    saveAccounts(list, me.login);
   }
   function signOut() {
+    const list = loadAccounts().filter(a => a.login !== state.myId);
     state.token = null; state.myId = null; state.canWrite = false; state.isAdmin = false;
-    try { localStorage.removeItem('gpu-token'); } catch {}
+    saveAccounts(list, list.length ? list[0].login : '');
+    if (list.length) { switchTo(list[0].login); return; }
     refreshAdmin(); render();
+  }
+  async function switchTo(login) {
+    const acct = loadAccounts().find(a => a.login === login); if (!acct) return;
+    try { await signIn(acct.token); toast(t('tSignedIn', state.myId)); await loadAll(); }
+    catch (e) { toast(errMsg(e)); }
+    refreshAdmin(); render();
+  }
+  function renderAccounts() {
+    const list = loadAccounts();
+    const sel = $('acct-switch');
+    sel.hidden = list.length < 2;
+    sel.innerHTML = list.map(a => `<option value="${esc(a.login)}" ${a.login === state.myId ? 'selected' : ''}>${esc(state.members[a.login] || a.login)}</option>`).join('') + `<option value="__add">${esc(t('addAccount'))}</option>`;
+    $('signout-btn').hidden = !state.myId;
+    $('signin-btn').textContent = state.myId ? t('addAccount') : t('signIn');
   }
 
   // ---------- render ----------
@@ -1206,9 +1235,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   const tokenUrl = () => `https://github.com/settings/tokens/new?scopes=public_repo&description=${encodeURIComponent('Lab GPU scheduler')}`;
   function openSignIn() {
     $('signin-steps').innerHTML = t('signInSteps', tokenUrl(), state.repo).map(x => `<li>${x}</li>`).join('');
-    $('name-input').value = state.members[state.myId] || ''; $('signin-panel').hidden = false; $('token-input').focus();
+    $('name-input').value = ''; $('signin-panel').hidden = false; $('token-input').focus();
   }
-  $('signin-btn').addEventListener('click', () => { if (state.myId) signOut(); else openSignIn(); });
+  $('signin-btn').addEventListener('click', () => openSignIn());
+  $('signout-btn').addEventListener('click', () => signOut());
+  $('acct-switch').addEventListener('change', (ev) => { const v = ev.target.value; if (v === '__add') { renderAccounts(); openSignIn(); } else switchTo(v); });
   $('signin-close').addEventListener('click', () => { $('signin-panel').hidden = true; });
   $('signin-form').addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -1229,8 +1260,10 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   (async () => {
     applyStatic();
     render();
-    let saved = null; try { saved = localStorage.getItem('gpu-token'); } catch {}
-    if (saved) { try { await signIn(saved); } catch { signOut(); } }
+    const accounts = loadAccounts();
+    let current = ''; try { current = localStorage.getItem('gpu-current') || ''; } catch {}
+    const acct = accounts.find(a => a.login === current) || accounts[0];
+    if (acct) { try { await signIn(acct.token); } catch { saveAccounts(accounts.filter(a => a !== acct), ''); state.token = null; state.myId = null; } }
     try { await loadAll(); } catch (e) { setNotice('nNoData', 'bad'); }
     if (!state.myId) setNotice('nSignIn');
     else if (!state.canWrite) setNotice('nViewOnly');
