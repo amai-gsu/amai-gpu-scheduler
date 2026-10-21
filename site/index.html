@@ -350,8 +350,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
           <label class="full"><span data-i18n="fGpuIds">GPU ids (optional)</span>
             <input id="f-gpuids" type="text" class="mono" placeholder="0,2" data-i18n-placeholder="fGpuIdsPh">
           </label>
-          <label class="full"><span data-i18n="fPurpose">What for (experiment, expected VRAM)</span>
-            <textarea id="f-purpose" required data-i18n-placeholder="fPurposePh" placeholder="e.g. LoRA fine-tune of LLaMA-7B, ~40 GB VRAM"></textarea>
+          <label class="full"><span data-i18n="fPurpose">What for (project or deadline, roughly how much VRAM)</span>
+            <textarea id="f-purpose" required data-i18n-placeholder="fPurposePh" placeholder="e.g. ACL submission: training a 1B model, ~20 GB per card"></textarea>
           </label>
           <div class="full checks">
             <label class="check"><input id="f-share" type="checkbox"> <span data-i18n="fShare">Can share: others may run on these cards too (I'm not using all the VRAM)</span></label>
@@ -415,8 +415,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       nodesHint: 'Each square is one card, colored by who holds it. Click a node to filter the timeline below; change the date to see any day.',
       clusterTitle: 'Whole cluster', freeCards: (n) => `${n} free`, maintCards: (n) => `${n} in maintenance`, overAlloc: 'over-allocated',
       myRequests: 'My bookings', fNode: 'Node', fCards: 'Cards', fStart: 'Start', fEnd: 'End',
-      fPurpose: 'What for (experiment, expected VRAM)',
-      fPurposePh: 'e.g. LoRA fine-tune of LLaMA-7B, ~40 GB VRAM',
+      fPurpose: 'What for (project or deadline, roughly how much VRAM)',
+      fPurposePh: 'e.g. ACL submission: training a 1B model, ~20 GB per card',
       fShare: 'Can share: others may run on these cards too (I’m not using all the VRAM)', fPreempt: 'Can be preempted: if someone needs the cards urgently, they may kill my job',
       tagShare: 'shareable', tagPreempt: 'preemptible',
       submit: 'Book', tabAll: 'All bookings', tabGpus: 'Nodes', fGpuIds: 'GPU ids (optional)', fGpuIdsPh: 'e.g. 0,2 — empty takes the lowest free cards',
