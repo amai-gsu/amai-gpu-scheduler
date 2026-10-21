@@ -15,6 +15,8 @@ the moment you submit it, and the page refuses windows where the cards are alrea
 3. Run with the cards you were given, e.g. `CUDA_VISIBLE_DEVICES=0,2`. Ids match `nvidia-smi` on
    the node.
 4. Done early? Click **Release early** on your booking so others can use the cards.
+5. The page shows the Name from your GitHub profile. If you have none, type your name in the
+   sign-in box (below the token); sign in again any time to change it.
 
 You need **Write** access to this repository to book. Ask a lab admin to add you under
 Settings → Collaborators.
@@ -26,6 +28,8 @@ Settings → Collaborators.
   shows a *Cancel booking* button.
 - **Add or change nodes**: edit [`nodes.json`](nodes.json) and commit. Fields: `id`, `name`,
   `model`, `cards`, `memoryGb`, `status` (`available` or `maintenance`), `note`.
+- **Fill in people's names**: edit [`members.json`](members.json), `"github-login": "Real Name"`.
+  It overrides the GitHub profile name.
 - **Fix a booking by hand**: edit [`bookings.json`](bookings.json); every booking is one object
   with `uid`, `gpuId`, `count`, `start`, `end` (inclusive dates), optional `slots`, and
   `closedAt` / `cancelled` once it ends.
