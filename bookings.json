@@ -1,6 +1,20 @@
 {
   "bookings": [
     {
+      "id": "b_mvik3rir0knzp",
+      "uid": "hrchai",
+      "gpuId": "lab2",
+      "count": 2,
+      "start": "2026-10-21",
+      "end": "2026-10-31",
+      "purpose": "experiment",
+      "slots": [
+        0,
+        1
+      ],
+      "createdAt": "2026-10-21T20:20:21.651Z"
+    },
+    {
       "id": "b_mvijwl59y5za2",
       "uid": "WeiHu9",
       "gpuId": "ada6000",
