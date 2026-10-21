@@ -454,9 +454,10 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       tokenHint: 'Stored only in this browser. It is sent to api.github.com and nowhere else.',
       signInSteps: (url, repo) => [
         `Open <a href="${url}" target="_blank" rel="noopener">GitHub → New fine-grained token</a> (sign in to GitHub if asked).`,
-        `Under <b>Repository access</b> choose <b>Only select repositories</b> and pick <code>${repo}</code>.`,
+        `At the top, set <b>Expiration</b> to something long (1 year). The default of 30 days means you will have to repeat this next month.`,
+        `Under <b>Repository access</b> choose <b>Only select repositories</b> and pick <code>${repo}</code> (just this one).`,
         `Under <b>Permissions → Repository permissions</b> set <b>Contents</b> to <b>Read and write</b>. Leave everything else as is.`,
-        `Set an expiration you like (1 year is fine), click <b>Generate token</b>, copy it, and paste it below.`],
+        `Scroll to the bottom, click <b>Generate token</b>, copy it, and paste it below.`],
       tSignedIn: (u) => `Signed in as ${u}`, tSignedInRO: (u) => `Signed in as ${u}, but you cannot write to this repository. Ask an admin to add you as a collaborator with Write access.`,
       eBadToken: 'GitHub rejected the token. Generate a new one and sign in again.',
       cancel: 'Cancel booking', confirmCancel: 'Confirm cancel?', tCancelled: 'Booking cancelled',
