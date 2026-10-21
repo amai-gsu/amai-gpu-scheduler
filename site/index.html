@@ -173,6 +173,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .req .line1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .req .person { display: flex; align-items: center; gap: 6px; font-weight: 600; }
 .req .person img { width: 20px; height: 20px; border-radius: 50%; }
+.req .person .login { font-weight: 400; color: var(--muted); font-size: 12px; }
 .req .purpose { white-space: pre-wrap; overflow-wrap: anywhere; }
 .req .meta { font-size: 12px; color: var(--muted); display: flex; gap: 6px 14px; flex-wrap: wrap; }
 .req .note { font-size: 12px; padding: 6px 8px; border-radius: 6px; background: var(--surface-2); overflow-wrap: anywhere; }
@@ -572,20 +573,44 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   function notice(msg, kind, key) { const n = $('notice'); n.hidden = !msg; n.textContent = msg || ''; n.className = 'notice' + (kind ? ' ' + kind : ''); if (key !== undefined) { state.noticeKey = key; state.noticeKind = kind || ''; } }
   const setNotice = (key, kind) => notice(key ? t(key) : '', kind, key);
   // People are GitHub logins; avatars come from github.com.
+  // Display names come from each person's public GitHub profile (the Name field), cached in this
+  // browser for a week so the page does not hit the API on every render. Falls back to the login.
+  const nameCache = {};
+  try { Object.assign(nameCache, JSON.parse(localStorage.getItem('gpu-names') || '{}')); } catch {}
+  const NAME_TTL = 7 * 86400000;
+  const pendingNames = new Set();
+  async function fetchName(login) {
+    if (pendingNames.has(login)) return;
+    pendingNames.add(login);
+    try {
+      const u = await gh(`/users/${encodeURIComponent(login)}`);
+      nameCache[login] = { name: (u.name || '').trim(), at: Date.now() };
+    } catch (e) {
+      nameCache[login] = { name: '', at: Date.now() - NAME_TTL + 3600000 };   // retry in an hour
+    } finally {
+      pendingNames.delete(login);
+      try { localStorage.setItem('gpu-names', JSON.stringify(nameCache)); } catch {}
+      render();
+    }
+  }
   async function names(ids) {
     const out = {};
-    for (const id of new Set(ids.filter(Boolean))) out[id] = { id, name: id, avatarUrl: `https://github.com/${encodeURIComponent(id)}.png?size=40` };
+    for (const id of new Set(ids.filter(Boolean))) {
+      const c = nameCache[id];
+      if (!c || Date.now() - c.at > NAME_TTL) fetchName(id);
+      out[id] = { id, name: (c && c.name) || id, login: id, avatarUrl: `https://github.com/${encodeURIComponent(id)}.png?size=40` };
+    }
     return out;
   }
   const nameOf = (profiles, uid) => (profiles[uid] && profiles[uid].name) || uid || t('member');
-  const personHTML = (p, uid) => `<span class="person">${p ? `<img src="${esc(p.avatarUrl)}" alt="" loading="lazy">` : ''}<span>${esc(nameOf({ [uid]: p }, uid))}</span></span>`;
+  const personHTML = (p, uid) => `<span class="person" title="${esc(uid)}">${p ? `<img src="${esc(p.avatarUrl)}" alt="" loading="lazy">` : ''}<span>${esc(nameOf({ [uid]: p }, uid))}</span>${p && p.name !== uid ? `<span class="login">${esc(uid)}</span>` : ''}</span>`;
   // Identity comes from a GitHub token the person pastes once; GitHub tells us who they are and what they may do.
   function refreshAdmin() {
     $('admin-panel').hidden = false;
     renderRole();
   }
   function renderRole() {
-    $('me-name').textContent = state.myId || t('notSignedIn');
+    $('me-name').textContent = state.myId ? ((nameCache[state.myId] && nameCache[state.myId].name) || state.myId) : t('notSignedIn');
     const roleEl = $('me-role');
     roleEl.textContent = state.isAdmin ? t('roleAdmin') : (state.canWrite ? t('roleMember') : (state.myId ? t('roleViewer') : t('roleGuest')));
     roleEl.className = 'role' + (state.isAdmin ? ' admin' : '');
