@@ -1,6 +1,26 @@
 {
   "bookings": [
     {
+      "id": "b_a16436d27c6nyka",
+      "uid": "arrdel",
+      "gpuId": "lab2",
+      "count": 4,
+      "start": "2026-11-01",
+      "end": "2026-11-15",
+      "purpose": "CDR causal latent-reasoning experiments: multi-seed training and interchange-intervention evaluation. Exclusive so long runs are not preempted.",
+      "modelSize": "CDR latent diffusion reasoner (multi-seed)",
+      "vramGb": 16,
+      "slots": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "share": false,
+      "preempt": false,
+      "createdAt": "2026-10-22T15:24:36.860Z"
+    },
+    {
       "id": "b_mviorinj33im1",
       "uid": "xiaolong-shawn",
       "gpuId": "lab2",
