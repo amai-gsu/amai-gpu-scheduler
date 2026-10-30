@@ -1,6 +1,25 @@
 {
   "bookings": [
     {
+      "id": "b_mvuj42zv1tubd",
+      "uid": "arrdel",
+      "gpuId": "ada6000",
+      "count": 3,
+      "start": "2026-11-16",
+      "end": "2026-11-30",
+      "purpose": "traj-eval & diffusion reasoning experiments: Dream-7B, LLaDA-8B-Instruct, and LLaDA-1.5 trajectory evaluation, forced deliberation, and RL credit assignment.",
+      "modelSize": "Dream-7B / LLaDA-8B-Instruct / LLaDA-1.5 (7B-8B bf16)",
+      "vramGb": 28,
+      "slots": [
+        0,
+        1,
+        2
+      ],
+      "share": false,
+      "preempt": false,
+      "createdAt": "2026-10-30T05:25:51.019Z"
+    },
+    {
       "id": "b_a16436d27c6nyka",
       "uid": "arrdel",
       "gpuId": "lab2",
