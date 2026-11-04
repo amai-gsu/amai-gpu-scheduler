@@ -420,8 +420,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     <section class="panel" id="admin-panel" hidden>
       <header>
         <div class="tabs" role="tablist">
-          <button role="tab" aria-selected="true" data-tab="all" data-i18n="tabAll">History</button>
-          <button role="tab" aria-selected="false" data-tab="gpus" data-i18n="tabGpus">Manage nodes</button>
+          <button role="tab" aria-selected="true" data-tab="gpus" data-i18n="tabGpus">Nodes</button>
         </div>
       </header>
       <div class="body" id="admin-body"></div>
@@ -559,7 +558,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   const state = {
     myId: null, isAdmin: false, canWrite: false, token: null, repo: REPO, generatedAt: '',
     gpus: [], requests: [], sha: null, nodesSha: null, members: {}, assignments: [], rules: null, targets: [], editingTarget: null,
-    adminTab: 'all', confirmKey: null,
+    adminTab: 'gpus', confirmKey: null,
     queryDay: TODAY, filterGpu: null, colors: {},
     noticeKey: null, noticeKind: '', booted: false,
     admins: [],                    // ids the owner has made admins (settings/admins)
@@ -1289,15 +1288,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     const body = $('admin-body');
     document.querySelectorAll('.tabs [role=tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === state.adminTab)));
 
-    if (state.adminTab === 'all') {
-      const decided = reqs.filter(r => !r.isDefault);
-      body.innerHTML = decided.length ? `<div class="reqs">` + decided.map(r => {
-        const ck = 'cancel:' + r.id;
-        const extra = state.isAdmin && r.status === 'approved' && r.uid !== state.myId ? `<div class="actions"><button class="sm bad" data-act="cancel" data-rid="${esc(r.id)}">${esc(state.confirmKey === ck ? t('confirmCancel') : t('cancel'))}</button></div>` : '';
-        return reqCard(r, profiles, { extra });
-      }).join('') + `</div>` : `<div class="empty">${esc(t('noHistory'))}</div>`;
-      return;
-    }
     const rows = state.gpus.map(g => `<tr>
         <td><b>${esc(g.name)}</b>${g.note ? `<div class="hint">${esc(g.note)}</div>` : ''}</td>
         <td class="mono">${esc(g.cards)}× ${esc(g.model)}</td>
