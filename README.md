@@ -9,9 +9,10 @@ the moment you submit it, and the page refuses windows where the cards are alrea
 
 1. Open the link above and click **Sign in** (top right). The page walks you through creating a
    GitHub token (classic, `public_repo` scope only). Paste it once; your browser remembers it.
-2. Click a start and an end day on the calendar (the numbers are free cards per day), pick the
-   node and the exact GPU ids you want (`0,2`), give the model size and expected memory per card,
-   say what it's for, tick **Can share** / **Can be preempted** if that applies, and click **Book**.
+2. Your own cards (see **Card assignment**) need no booking. To borrow someone else's card they
+   must have switched on **Can share**: click a start and an end day on the calendar, pick the node
+   and the shareable cards, give the model size and expected memory per card, say what it's for,
+   and click **Book**.
 3. Run with the cards you were given, e.g. `CUDA_VISIBLE_DEVICES=0,2`. Ids match `nvidia-smi` on
    the node.
 4. Done early? Click **Release early** on your booking so others can use the cards.
@@ -29,8 +30,9 @@ Settings → Collaborators.
 - **Add a member**: Settings → Collaborators and teams → Add people → role **Write**.
 - **Cancel someone's booking**: sign in as a repository Maintainer/Admin; the **All bookings** tab
   shows a *Cancel booking* button.
-- **Default assignment** (who owns a card when nobody has booked it): edit
-  [`assignments.json`](assignments.json); each row is `uid`, `gpuId`, `slots`. Bookings always win.
+- **Card assignment**: every card has a standing owner, listed in
+  [`assignments.json`](assignments.json) (`uid`, `gpuId`, `slots`, `share`). Owners switch
+  **Can share** on or off on the page; only shared cards can be booked by someone else.
 - **Add or change nodes**: edit [`nodes.json`](nodes.json) and commit. Fields: `id`, `name`,
   `model`, `cards`, `memoryGb`, `status` (`available` or `maintenance`), `note`.
 - **Fill in people's names**: edit [`members.json`](members.json), `"github-login": "Real Name"`.

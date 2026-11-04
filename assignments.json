@@ -1,9 +1,46 @@
 {
   "assignments": [
-    { "uid": "prehoke",        "gpuId": "ada6000", "slots": [0] },
-    { "uid": "xiaolong-shawn", "gpuId": "ada6000", "slots": [1] },
-    { "uid": "WeiHu9",         "gpuId": "ada6000", "slots": [2] },
-    { "uid": "hrchai",         "gpuId": "lab2",    "slots": [0, 1] },
-    { "uid": "arrdel",         "gpuId": "lab2",    "slots": [2, 3] }
+    {
+      "uid": "prehoke",
+      "gpuId": "ada6000",
+      "slots": [
+        0
+      ],
+      "share": false
+    },
+    {
+      "uid": "xiaolong-shawn",
+      "gpuId": "ada6000",
+      "slots": [
+        1
+      ],
+      "share": false
+    },
+    {
+      "uid": "WeiHu9",
+      "gpuId": "ada6000",
+      "slots": [
+        2
+      ],
+      "share": false
+    },
+    {
+      "uid": "hrchai",
+      "gpuId": "lab2",
+      "slots": [
+        0,
+        1
+      ],
+      "share": false
+    },
+    {
+      "uid": "arrdel",
+      "gpuId": "lab2",
+      "slots": [
+        2,
+        3
+      ],
+      "share": false
+    }
   ]
 }

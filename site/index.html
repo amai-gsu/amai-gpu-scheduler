@@ -262,6 +262,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .steps code { font-family: var(--font-mono); background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
 .steps a { color: var(--accent); }
+.switch { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; }
+.switch.ro { cursor: default; color: var(--muted); }
+.switch input { width: auto; margin: 0; }
 .table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .table th, .table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 .table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
@@ -437,8 +440,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     en: {
       title: 'Lab GPU Scheduler', identifying: 'Identifying you…', roleGuest: 'Guest', roleMember: 'Member', roleAdmin: 'Admin',
       nodes: 'GPU nodes', queryDate: 'Date', backToToday: 'Back to today',
-      nodesHint: 'Each square is one card, colored by who holds it; an outlined square is free but has a default owner. Click a node to filter the timeline below; change the date to see any day.',
-      assignTitle: 'Default assignment', assignHint: 'Who a card belongs to when nobody has booked it. Bookings take priority. Edit assignments.json in the repository to change it.', thOwner: 'Default owner', thCards: 'Cards', defaultOwner: (n) => `default: ${n}`,
+      nodesHint: 'Each square is one card, colored by its owner; a split square is shared by two people. Click a node to filter the timeline below; change the date to see any day.',
+      assignTitle: 'Card assignment', assignHint: 'Every card has a standing owner. Switch on “Can share” to let one more person book your cards for a date range; cards that are not shared cannot be booked by others. Owners are set in assignments.json.', thOwner: 'Owner', thShare: 'Can share', thCards: 'Cards', defaultOwner: (n) => `default: ${n}`, defaultPurpose: 'Standing assignment',
+      shareYes: 'Yes, others may book these', shareNo: 'No', shareToggleHint: 'Let one more person run on your cards for the dates they book.', shareOwnerOnly: 'Only the owner (or an admin) can change this.', tShareOn: 'Your cards are now shareable', tShareOff: 'Your cards are no longer shareable',
       clusterTitle: 'Whole cluster', freeCards: (n) => `${n} free`, maintCards: (n) => `${n} in maintenance`, overAlloc: 'over-allocated',
       myRequests: 'My bookings', fNode: 'Node', fStart: 'Start', fEnd: 'End',
       fPurpose: 'What for (project or deadline)',
@@ -543,8 +547,17 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   };
 
   // ---------- helpers ----------
+  // Default assignments are standing bookings: the owner holds those cards on every day, and others can
+  // only join when the owner has switched sharing on. They never show in booking lists or statistics.
+  function defaultBookings() {
+    return state.assignments.map((a, k) => ({
+      id: 'a_' + k + '_' + a.uid, uid: a.uid, gpuId: a.gpuId, count: (a.slots || []).length, slots: a.slots || [],
+      start: '0000-01-01', end: '9999-12-31', purpose: t('defaultPurpose'), share: !!a.share, preempt: !!a.preempt,
+      status: 'approved', isDefault: true, createdAt: '', decision: { status: 'approved', slots: a.slots || [], note: '', decidedBy: null },
+    }));
+  }
   function allRequests() {
-    return [...state.requests].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    return [...state.requests].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')).concat(defaultBookings());
   }
   // The days a request actually holds cards: approved for its window, released until the day it was released.
   function heldRange(r) {
@@ -704,6 +717,17 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       } catch (e) { if (e.status !== 409 || attempt) throw e; }
     }
   }
+  async function writeAssignments(mutate, message) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const cur = await readFile('assignments.json');
+      const list = mutate((cur.data.assignments || []).map(a => ({ ...a })));
+      if (list === false) return false;
+      try {
+        await gh(`/repos/${state.repo}/contents/assignments.json`, { method: 'PUT', body: JSON.stringify({ message, sha: cur.sha, branch: 'main', content: b64enc(JSON.stringify({ assignments: list }, null, 2) + '\n') }) });
+        state.assignments = list; return true;
+      } catch (e) { if (e.status !== 409 || attempt) throw e; }
+    }
+  }
   async function writeMembers(mutate, message) {
     for (let attempt = 0; attempt < 2; attempt++) {
       let cur; try { cur = await readFile('members.json'); } catch { cur = { sha: undefined, data: { names: {} } }; }
@@ -857,17 +881,29 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     panel.hidden = !state.assignments.length;
     if (panel.hidden) return;
     const rows = state.gpus.map(g => {
-      const mine = state.assignments.filter(a => a.gpuId === g.id);
+      const mine = state.assignments.map((a, k) => ({ ...a, k })).filter(a => a.gpuId === g.id);
       if (!mine.length) return '';
-      return mine.map((a, k) => `<tr>
-        ${k === 0 ? `<td rowspan="${mine.length}"><b>${esc(g.name)}</b><div class="hint mono">${esc(g.cards)}× ${esc(g.model)}</div></td>` : ''}
-        <td class="mono">${esc((a.slots || []).map(i => 'GPU ' + i).join(', '))}</td>
-        <td><span class="person"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${state.colors[a.uid]};margin-right:6px"></i>${esc(nameOf(profiles, a.uid))}</span></td>
-        <td class="mono">${(a.slots || []).length}</td>
-      </tr>`).join('');
+      return mine.map((a, i) => {
+        const canToggle = state.canWrite && (a.uid === state.myId || state.isAdmin);
+        const toggle = `<label class="switch ${canToggle ? '' : 'ro'}" title="${esc(canToggle ? t('shareToggleHint') : t('shareOwnerOnly'))}"><input type="checkbox" data-act="toggleshare" data-k="${a.k}" ${a.share ? 'checked' : ''} ${canToggle ? '' : 'disabled'}><span>${esc(a.share ? t('shareYes') : t('shareNo'))}</span></label>`;
+        return `<tr>
+        ${i === 0 ? `<td rowspan="${mine.length}"><b>${esc(g.name)}</b><div class="hint mono">${esc(g.cards)}× ${esc(g.model)}</div></td>` : ''}
+        <td class="mono">${esc((a.slots || []).map(x => 'GPU ' + x).join(', '))}</td>
+        <td><span class="person"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${state.colors[a.uid]};margin-right:6px"></i>${esc(nameOf(profiles, a.uid))}${a.uid === state.myId ? ` <span class="hint">(${esc(t('you'))})</span>` : ''}</span></td>
+        <td>${toggle}</td>
+      </tr>`; }).join('');
     }).join('');
-    $('assign-table').innerHTML = `<table class="table"><thead><tr><th>${esc(t('thNode'))}</th><th>GPU</th><th>${esc(t('thOwner'))}</th><th>${esc(t('thCards'))}</th></tr></thead><tbody>${rows}</tbody></table>`;
+    $('assign-table').innerHTML = `<table class="table"><thead><tr><th>${esc(t('thNode'))}</th><th>GPU</th><th>${esc(t('thOwner'))}</th><th>${esc(t('thShare'))}</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
+  $('assign-table').addEventListener('change', async (ev) => {
+    const cb = ev.target.closest('input[data-act=toggleshare]'); if (!cb) return;
+    const k = Number(cb.dataset.k), on = cb.checked; cb.disabled = true;
+    try {
+      await writeAssignments(list => { if (!list[k] || (list[k].uid !== state.myId && !state.isAdmin)) return false; list[k].share = on; return list; }, `${on ? 'Share' : 'Unshare'} default cards of ${state.assignments[k] && state.assignments[k].uid} (${state.myId})`);
+      toast(on ? t('tShareOn') : t('tShareOff'));
+    } catch (e) { toast(errMsg(e)); }
+    render();
+  });
 
   // ----- calendar range picker -----
   function renderCalendar(reqs) {
@@ -968,7 +1004,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   }
 
   function renderMine(reqs, profiles) {
-    const mine = reqs.filter(r => r.uid === state.myId);
+    const mine = reqs.filter(r => r.uid === state.myId && !r.isDefault);
     $('my-count').textContent = mine.length ? t('count', mine.length) : '';
     const list = $('my-reqs');
     if (!state.myId) { list.innerHTML = `<div class="empty">${esc(t('signInToRequest'))}</div>`; return; }
@@ -994,14 +1030,14 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     $('tl-nav').hidden = state.schedView !== 'timeline';
 
     // list
-    const upcoming = approved.filter(r => r.end >= TODAY).sort((a, b) => a.start.localeCompare(b.start) || a.gpuId.localeCompare(b.gpuId));
+    const upcoming = approved.filter(r => !r.isDefault && r.end >= TODAY).sort((a, b) => a.start.localeCompare(b.start) || a.gpuId.localeCompare(b.gpuId));
     $('sched-list').innerHTML = upcoming.length ? upcoming.map(r => reqCard(r, profiles)).join('') : `<div class="empty">${esc(t('noScheduleList'))}</div>`;
 
     // timeline
     const DW = 36;
     const wStart = state.tlStart, wEnd = addDays(wStart, state.tlDays - 1);
     const inWindow = approved.filter(r => r.start <= wEnd && r.end >= wStart);
-    $('sched-count').textContent = inWindow.length ? t('approvedCount', inWindow.length) : '';
+    $('sched-count').textContent = inWindow.filter(r => !r.isDefault).length ? t('approvedCount', inWindow.filter(r => !r.isDefault).length) : '';
     const colors = state.colors;
     let days = '';
     const weekends = [];
@@ -1057,7 +1093,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   function computeStats(reqs, period) {
     const nodes = state.gpus.filter(g => g.status !== 'maintenance');
     const nodeIds = new Set(nodes.map(g => g.id));
-    const held = reqs.filter(r => heldRange(r) && nodeIds.has(r.gpuId));
+    const held = reqs.filter(r => !r.isDefault && heldRange(r) && nodeIds.has(r.gpuId));
     const nDays = daysBetween(period.start, period.end) + 1;
     const totalCards = nodes.reduce((s, g) => s + g.cards, 0);
     const byUser = {}, byNode = {}, daily = [];
@@ -1163,7 +1199,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     document.querySelectorAll('.tabs [role=tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === state.adminTab)));
 
     if (state.adminTab === 'all') {
-      const decided = reqs;
+      const decided = reqs.filter(r => !r.isDefault);
       body.innerHTML = decided.length ? `<div class="reqs">` + decided.map(r => {
         const ck = 'cancel:' + r.id;
         const extra = state.isAdmin && r.status === 'approved' && r.uid !== state.myId ? `<div class="actions"><button class="sm bad" data-act="cancel" data-rid="${esc(r.id)}">${esc(state.confirmKey === ck ? t('confirmCancel') : t('cancel'))}</button></div>` : '';
