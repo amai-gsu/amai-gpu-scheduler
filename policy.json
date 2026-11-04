@@ -2,19 +2,19 @@
   "policy": {
     "title": "GPU policy",
     "items": [
-      "Every card has a standing owner (see Card assignment). Use your own cards without booking.",
-      "To use someone else's card, the owner must have switched on Can share, and you must book it here first with the exact cards and dates.",
-      "Run only on the cards you own or booked: set CUDA_VISIBLE_DEVICES accordingly.",
-      "Release a booking as soon as you are done so others can use the cards.",
-      "Near a deadline, ask in the lab chat; owners are encouraged to share or lend their cards."
+      "Every card has a standing owner (see Card assignment). Use your own cards freely.",
+      "To use someone else's card, the owner must have switched on Can share, and you agree the details with them in the WeChat group first.",
+      "Run only on cards you own or were given: set CUDA_VISIBLE_DEVICES accordingly.",
+      "Stop and free the memory as soon as a run is done; do not park idle processes on a card.",
+      "Near a deadline, say so in the group (and fill in your Targets row); owners are encouraged to share."
     ]
   },
   "penalty": {
     "title": "Penalties",
     "items": [
-      "A job running on a card you neither own nor booked may be killed without notice.",
-      "Booked cards left idle for more than 24 hours: the booking is cancelled by an admin.",
-      "Repeated violations: booking privileges suspended for one week."
+      "A job running on a card you neither own nor were given may be killed without notice.",
+      "Cards held idle for more than 24 hours: the processes are killed by an admin.",
+      "Repeated violations: access to shared cards suspended for one week."
     ]
   },
   "chat": {
