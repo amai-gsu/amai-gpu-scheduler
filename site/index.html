@@ -369,6 +369,20 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     </div>
   </section>
 
+  <section class="panel" id="stats-panel">
+    <header>
+      <h2 data-i18n="stats">Usage statistics</h2>
+      <div class="actions">
+        <div class="seg" id="stats-range">
+          <button type="button" data-range="30" aria-pressed="true" data-i18n="last30">Last 30 days</button>
+          <button type="button" data-range="90" aria-pressed="false" data-i18n="last90">Last 90 days</button>
+          <button type="button" data-range="month" aria-pressed="false" data-i18n="thisMonth">This month</button>
+        </div>
+      </div>
+    </header>
+    <div class="body" id="stats-body"></div>
+  </section>
+
   <div class="cols">
     <section class="panel" id="targets-panel">
       <header>
@@ -433,19 +447,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     </section>
   </div>
 
-  <section class="panel" id="stats-panel">
-    <header>
-      <h2 data-i18n="stats">Usage statistics</h2>
-      <div class="actions">
-        <div class="seg" id="stats-range">
-          <button type="button" data-range="30" aria-pressed="true" data-i18n="last30">Last 30 days</button>
-          <button type="button" data-range="90" aria-pressed="false" data-i18n="last90">Last 90 days</button>
-          <button type="button" data-range="month" aria-pressed="false" data-i18n="thisMonth">This month</button>
-        </div>
-      </div>
-    </header>
-    <div class="body" id="stats-body"></div>
-  </section>
 </div>
 
 <script>
