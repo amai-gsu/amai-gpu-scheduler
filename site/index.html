@@ -369,6 +369,13 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       <header><h2 data-i18n="assignTitle">Default assignment</h2><span class="hint" data-i18n="assignHint">Who a card belongs to when nobody has booked it. Bookings take priority. Edit assignments.json in the repository to change it.</span></header>
       <div class="body"><div class="table-wrap" id="assign-table"></div></div>
     </div>
+    <div style="height:14px"></div>
+    <section class="panel" id="admin-panel">
+      <header>
+        <h2 data-i18n="tabGpus">Node details</h2>
+      </header>
+      <div class="body" id="admin-body"></div>
+    </section>
   </section>
 
   <section class="panel" id="schedule-panel">
@@ -417,14 +424,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     </section>
 
 
-    <section class="panel" id="admin-panel" hidden>
-      <header>
-        <div class="tabs" role="tablist">
-          <button role="tab" aria-selected="true" data-tab="gpus" data-i18n="tabGpus">Nodes</button>
-        </div>
-      </header>
-      <div class="body" id="admin-body"></div>
-    </section>
   </div>
 
 </div>
@@ -460,7 +459,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       fModel: 'Model size', fVram: 'Expected memory per card (GB)', vModel: 'Say how big the model is (e.g. 7B).', vVram: 'Give a rough memory estimate per card in GB.', perCard: 'GB/card',
       fShare: 'Can share: others may run on these cards too (I’m not using all the memory)', fPreempt: 'Can be preempted: if someone needs the cards urgently, they may kill my job',
       tagShare: 'shareable', tagPreempt: 'preemptible',
-      submit: 'Book', tabAll: 'All bookings', tabGpus: 'Nodes', fGpuIds: 'Pick the cards you want for these dates', vGpuIds: 'Pick at least one card.', pickFree: 'free', pickShare: 'shareable with the holder', pickTaken: 'taken', pickWith: (n) => `with ${n}`, pickSummary: (n) => `${n} selected`,
+      submit: 'Book', tabAll: 'All bookings', tabGpus: 'Node details', fGpuIds: 'Pick the cards you want for these dates', vGpuIds: 'Pick at least one card.', pickFree: 'free', pickShare: 'shareable with the holder', pickTaken: 'taken', pickWith: (n) => `with ${n}`, pickSummary: (n) => `${n} selected`,
       vNoRoom: (n, g) => `Only ${n} card${n === 1 ? '' : 's'} free on ${g} in that window. Pick other dates or fewer cards.`, vTaken: (taken, free) => `GPU ${taken} already booked in that window; free: ${free}.`,
       schedule: 'Usage by month', last30btn: 'This month', showAllNodes: 'Show all nodes', viewTimeline: 'Timeline', viewList: 'List',
       calSelected: 'Selected range', calFull: 'No free cards', calHint: 'Numbers are free cards on that node; +n are cards someone is willing to share. Click a start day, then an end day.', sharedWith: (n) => `sharing with ${n}`, calShareable: (n) => `${n} card${n === 1 ? '' : 's'} shareable with the current holder`, shared: 'shared by two people',
@@ -489,7 +488,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       notePh: 'Note (optional), e.g. low priority, may be preempted', approve: 'Approve', reject: 'Reject',
       slotsPh: (free) => `GPU ids (optional)${free ? ', free: ' + free : ''}`, slotsHint: 'Which physical cards to give, e.g. 0,2. Leave empty to assign the lowest free cards automatically.',
       vSlots: (n, max) => `Enter exactly ${n} distinct GPU id${n === 1 ? '' : 's'} between 0 and ${max}, e.g. 0,2.`, auto: 'auto',
-      admins: 'Admins', adminsHint: 'Anyone with Write access on the repository can book. Repository maintainers and admins can also cancel other people’s bookings.', noAdmins: 'No other admins yet.',
+      admins: 'Admins', adminsHint: 'Nodes are configured in nodes.json; the live data on this page comes from the agent on each node (agent/README.md).', noAdmins: 'No other admins yet.',
       adminSearchPh: 'Search people by name to add as admin…', alreadyAdmin: 'already admin', remove: 'Remove', tAdminAdded: 'Admin added', tAdminRemoved: 'Admin removed',
       reopen: 'Undo decision, review again', confirmReopen: 'Confirm undo?',
       addNode: 'Add a node', gName: 'Node name', gNamePh: 'e.g. node-01 / 4090-server', gModel: 'GPU model', gModelPh: 'e.g. A100 / RTX 4090',
@@ -1350,7 +1349,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
   function renderAdmin(reqs, profiles) {
     const body = $('admin-body');
-    document.querySelectorAll('.tabs [role=tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === state.adminTab)));
 
     const rows = state.gpus.map(g => `<tr>
         <td><b>${esc(g.name)}</b>${g.note ? `<div class="hint">${esc(g.note)}</div>` : ''}</td>
@@ -1411,7 +1409,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     const out = []; for (let i = 0; i < g.cards; i++) if (canJoin(busy[i] || [], r)) out.push(i);
     return out;
   }
-  document.querySelector('.tabs').addEventListener('click', (ev) => { const tab = ev.target.closest('[role=tab]'); if (!tab) return; state.adminTab = tab.dataset.tab; render(); });
   $('q-day').value = TODAY;
   $('q-day').addEventListener('change', () => { state.queryDay = $('q-day').value || TODAY; render(); });
   $('q-today').addEventListener('click', () => { state.queryDay = TODAY; $('q-day').value = TODAY; render(); });
