@@ -261,6 +261,18 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .steps code { font-family: var(--font-mono); background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
 .steps a { color: var(--accent); }
+.chat-list { display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto; padding-right: 4px; }
+.msg { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; align-items: start; }
+.msg img { width: 24px; height: 24px; border-radius: 50%; margin-top: 2px; }
+.msg .head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.msg .head b { font-weight: 600; }
+.msg .head time { font-size: 11px; color: var(--muted); font-family: var(--font-mono); }
+.msg .text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg .ref { display: inline-block; font-size: 11px; color: var(--accent); background: var(--accent-soft); padding: 0 6px; border-radius: 4px; margin-right: 4px; cursor: pointer; }
+.msg.mine .head b { color: var(--accent); }
+.chat-compose { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.req .comment { font-size: 11px; }
+.req.flash { outline: 2px solid var(--accent); outline-offset: 2px; }
 .table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .table th, .table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 .table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
@@ -399,6 +411,19 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     </section>
   </div>
 
+  <section class="panel" id="chat-panel">
+    <header><h2 data-i18n="chat">Lab chat</h2><span class="hint" id="chat-hint" data-i18n="chatHint">A message board: others see new messages within about 20 seconds. Messages are public, like the bookings.</span></header>
+    <div class="body">
+      <div class="chat-list" id="chat-list"></div>
+      <form id="chat-form" autocomplete="off">
+        <div class="full chat-compose">
+          <input id="chat-input" type="text" maxlength="500" placeholder="Write a message… (e.g. “Releasing ada6000 GPU 1 tonight at 10”)" data-i18n-placeholder="chatPh">
+          <button type="submit" class="primary" id="chat-send" data-i18n="send">Send</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
   <section class="panel" id="stats-panel">
     <header>
       <h2 data-i18n="stats">Usage statistics</h2>
@@ -487,6 +512,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       eRate: 'Too many actions at once. Try again in a moment.', eFail: (m) => `Failed: ${m || 'unknown error'}`,
       updated: 'updated', nNoData: 'Could not load bookings.json from GitHub. Check the repository and try again.',
       nameLabel: 'Your real name (shown on your bookings so everyone knows who holds the cards)', vName: 'Please enter your real name.',
+      chat: 'Lab chat', chatHint: 'A message board: others see new messages within about 20 seconds. Messages are public, like the bookings.', chatPh: 'Write a message… (e.g. “Releasing ada6000 GPU 1 tonight at 10”)', chatRefPh: (r) => `Comment on ${r}…`, chatSignIn: 'Sign in to post.', send: 'Send', noChat: 'No messages yet.', comment: '💬 Comment on this booking',
       roleViewer: 'Viewer', signIn: 'Sign in', signOut: 'Sign out', addAccount: 'Add account…', signInTitle: 'Sign in with a GitHub token (one time)', tokenLabel: 'Token', tokenSave: 'Sign in',
       tokenHint: 'Stored only in this browser. It is sent to api.github.com and nowhere else.',
       signInSteps: (url, repo) => [
@@ -526,7 +552,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
   const state = {
     myId: null, isAdmin: false, canWrite: false, token: null, repo: REPO, generatedAt: '',
-    gpus: [], requests: [], sha: null, nodesSha: null, members: {}, assignments: [],
+    gpus: [], requests: [], sha: null, nodesSha: null, members: {}, assignments: [], messages: [], chatRef: null,
     adminTab: 'all', confirmKey: null,
     queryDay: TODAY, filterGpu: null, colors: {},
     noticeKey: null, noticeKind: '', booted: false,
@@ -677,7 +703,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     return { sha: f.sha, data: JSON.parse(b64dec(f.content)) };
   }
   async function loadAll() {
-    const [b, n, m, a] = await Promise.all([readFile('bookings.json'), readFile('nodes.json'), readFile('members.json').catch(() => ({ data: { names: {} } })), readFile('assignments.json').catch(() => ({ data: { assignments: [] } }))]);
+    const [b, n, m, a, c] = await Promise.all([readFile('bookings.json'), readFile('nodes.json'), readFile('members.json').catch(() => ({ data: { names: {} } })), readFile('assignments.json').catch(() => ({ data: { assignments: [] } })), readFile('chat.json').catch(() => ({ data: { messages: [] } }))]);
+    state.messages = (c.data && c.data.messages) || [];
     state.members = (m.data && m.data.names) || {};
     state.assignments = (a.data && a.data.assignments) || [];
     state.sha = b.sha; state.requests = (b.data.bookings || []).map(normalize);
@@ -699,6 +726,17 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         const res = await gh(`/repos/${state.repo}/contents/bookings.json`, { method: 'PUT', body: JSON.stringify({ message, sha: cur.sha, branch: 'main', content: b64enc(JSON.stringify({ bookings: list }, null, 2) + '\n') }) });
         state.sha = res.content.sha; state.requests = list.map(normalize); return true;
       } catch (e) { if (e.status !== 409 || attempt) throw e; }
+    }
+  }
+  async function writeChat(mutate, message) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      let cur; try { cur = await readFile('chat.json'); } catch { cur = { sha: undefined, data: { messages: [] } }; }
+      const list = mutate((cur.data.messages || []).slice(-299));
+      try {
+        const body = { message, branch: 'main', content: b64enc(JSON.stringify({ messages: list }, null, 2) + '\n') }; if (cur.sha) body.sha = cur.sha;
+        await gh(`/repos/${state.repo}/contents/chat.json`, { method: 'PUT', body: JSON.stringify(body) });
+        state.messages = list; return true;
+      } catch (e) { if (e.status !== 409 || attempt === 2) throw e; }
     }
   }
   async function writeMembers(mutate, message) {
@@ -777,6 +815,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     renderMine(reqs, profiles);
     renderSchedule(reqs, profiles);
     renderStats(reqs, profiles);
+    renderChat(reqs, profiles);
     renderAdmin(reqs, profiles);
   }
 
@@ -960,6 +999,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         <div class="meta">${parts.join('')}</div>
         ${noteHTML}
         ${opts.extra || ''}
+        ${state.canWrite ? `<div class="actions"><button class="link comment" data-act="comment" data-rid="${esc(r.id)}">${esc(t('comment'))}</button></div>` : ''}
       </div>
     </div>`;
   }
@@ -1155,6 +1195,40 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   }
   $('stats-range').addEventListener('click', (ev) => { const b = ev.target.closest('[data-range]'); if (b) { state.statsRange = b.dataset.range; render(); } });
 
+  const fmtTime = (iso) => { const d = new Date(iso); if (isNaN(d)) return ''; const same = iso.slice(0, 10) === TODAY; return (same ? '' : `${d.getMonth() + 1}/${d.getDate()} `) + `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+  function renderChat(reqs, profiles) {
+    const list = $('chat-list');
+    const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+    const msgs = state.messages.slice(-200);
+    list.innerHTML = msgs.length ? msgs.map(m => {
+      const p = profiles[m.uid];
+      const ref = m.ref ? (() => { const r = reqs.find(x => x.id === m.ref); const g = r && gpuById(r.gpuId); return r ? `<span class="ref" data-jump="${esc(r.id)}" title="${esc(r.purpose)}">${esc(nameOf(profiles, r.uid))} · ${esc(g ? g.name : '?')} GPU ${esc((state.slots[r.id] || []).join(','))} · ${esc(r.start.slice(5))}→${esc(r.end.slice(5))}</span>` : ''; })() : '';
+      return `<div class="msg ${m.uid === state.myId ? 'mine' : ''}">${p ? `<img src="${esc(p.avatarUrl)}" alt="" loading="lazy">` : '<span></span>'}<div><div class="head"><b>${esc(nameOf(profiles, m.uid))}</b><time>${esc(fmtTime(m.at))}</time></div><div class="text">${ref}${esc(m.text)}</div></div></div>`;
+    }).join('') : `<div class="empty">${esc(t('noChat'))}</div>`;
+    if (atBottom || !list.dataset.scrolled) { list.scrollTop = list.scrollHeight; list.dataset.scrolled = '1'; }
+    $('chat-send').disabled = !state.canWrite;
+    $('chat-input').disabled = !state.canWrite;
+    $('chat-input').placeholder = state.canWrite ? (state.chatRef ? t('chatRefPh', refLabel(reqs, profiles, state.chatRef)) : t('chatPh')) : t('chatSignIn');
+  }
+  const refLabel = (reqs, profiles, rid) => { const r = reqs.find(x => x.id === rid); const g = r && gpuById(r.gpuId); return r ? `${nameOf(profiles, r.uid)} · ${g ? g.name : '?'} GPU ${(state.slots[r.id] || []).join(',')}` : ''; };
+  $('chat-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (!state.canWrite) { toast(t('vSignIn')); return; }
+    const text = $('chat-input').value.trim(); if (!text) return;
+    const btn = $('chat-send'); btn.disabled = true;
+    const msg = { id: 'm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), uid: state.myId, text, at: new Date().toISOString() };
+    if (state.chatRef) msg.ref = state.chatRef;
+    try {
+      await writeChat(list => { list.push(msg); return list; }, `Chat: ${state.myId}`);
+      $('chat-input').value = ''; state.chatRef = null;
+    } catch (e) { toast(errMsg(e)); }
+    btn.disabled = false; render();
+  });
+  $('chat-list').addEventListener('click', (ev) => {
+    const j = ev.target.closest('[data-jump]'); if (!j) return;
+    const el = document.querySelector(`.req[data-rid="${j.dataset.jump}"]`); if (!el) return;
+    try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch {} el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2000);
+  });
   function renderAdmin(reqs, profiles) {
     const body = $('admin-body');
     document.querySelectorAll('.tabs [role=tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === state.adminTab)));
@@ -1224,6 +1298,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   document.addEventListener('click', async (ev) => {
     const b = ev.target.closest('button[data-act]'); if (!b) return;
     const act = b.dataset.act, rid = b.dataset.rid;
+    if (act === 'comment') { state.chatRef = rid; render(); try { $('chat-panel').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch {} setTimeout(() => $('chat-input').focus(), 400); return; }
     try {
       if (act === 'release') {
         if (needsConfirm('mine:' + rid)) return;
@@ -1297,7 +1372,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     refreshAdmin();
     render();
     // pick up other people's bookings while the page stays open
-    setInterval(async () => { if (document.hidden) return; try { await loadAll(); render(); } catch {} }, 60000);
+    setInterval(async () => { if (document.hidden) return; try { await loadAll(); render(); } catch {} }, 20000);
   })();
 })();
 </script>
