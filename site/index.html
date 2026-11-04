@@ -355,12 +355,12 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
   <section class="panel" id="schedule-panel">
     <header>
-      <h2 id="sched-title" data-i18n="schedule">Allocations</h2>
+      <h2 id="sched-title" data-i18n="schedule">Usage, last 30 days</h2>
       <div class="actions">
         <span class="count" id="sched-count"></span>
         <button class="sm" id="sched-clear" type="button" hidden data-i18n="showAllNodes">Show all nodes</button>
-        <div class="seg" id="tl-nav"><button type="button" data-shift="-7">‹</button><button type="button" data-shift="0" data-i18n="today">Today</button><button type="button" data-shift="7">›</button></div>
-        <div class="seg" id="sched-view"><button type="button" data-view="timeline" aria-pressed="true" data-i18n="viewTimeline">Timeline</button><button type="button" data-view="list" aria-pressed="false" data-i18n="viewList">List</button></div>
+        <div class="seg" id="tl-nav"><button type="button" data-shift="-7">‹</button><button type="button" data-shift="0" data-i18n="last30btn">Last 30 days</button><button type="button" data-shift="7">›</button></div>
+        
       </div>
     </header>
     <div class="body">
@@ -480,7 +480,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       tagShare: 'shareable', tagPreempt: 'preemptible',
       submit: 'Book', tabAll: 'All bookings', tabGpus: 'Nodes', fGpuIds: 'Pick the cards you want for these dates', vGpuIds: 'Pick at least one card.', pickFree: 'free', pickShare: 'shareable with the holder', pickTaken: 'taken', pickWith: (n) => `with ${n}`, pickSummary: (n) => `${n} selected`,
       vNoRoom: (n, g) => `Only ${n} card${n === 1 ? '' : 's'} free on ${g} in that window. Pick other dates or fewer cards.`, vTaken: (taken, free) => `GPU ${taken} already booked in that window; free: ${free}.`,
-      schedule: 'Allocations', showAllNodes: 'Show all nodes', viewTimeline: 'Timeline', viewList: 'List',
+      schedule: 'Usage, last 30 days', last30btn: 'Last 30 days', showAllNodes: 'Show all nodes', viewTimeline: 'Timeline', viewList: 'List',
       calSelected: 'Selected range', calFull: 'No free cards', calHint: 'Numbers are free cards on that node; +n are cards someone is willing to share. Click a start day, then an end day.', sharedWith: (n) => `sharing with ${n}`, calShareable: (n) => `${n} card${n === 1 ? '' : 's'} shareable with the current holder`, shared: 'shared by two people',
       calNoNode: 'Pick a node to see its free cards per day.',
       rangeDays: (n, c) => `${n} day${n === 1 ? '' : 's'} × ${c} card${c === 1 ? '' : 's'} = ${n * c} card-days`,
@@ -574,7 +574,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     calMonth: TODAY.slice(0, 7),   // yyyy-mm shown in the picker
     picking: false,                // true after the first click of a range
     picked: new Set(),             // GPU ids chosen in the booking form
-    tlStart: mondayOf(TODAY), tlDays: 28, schedView: 'timeline',
+    tlStart: addDays(TODAY, -29), tlDays: 30, schedView: 'timeline',
     statsRange: '30',
   };
 
@@ -1182,7 +1182,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     $('sched-clear').hidden = !g;
     const nodes = g ? [g] : state.gpus;
     const approved = reqs.filter(r => r.status === 'approved' && (!g || r.gpuId === g.id));
-    document.querySelectorAll('#sched-view button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === state.schedView)));
     $('sched-timeline').hidden = state.schedView !== 'timeline';
     $('sched-list').hidden = state.schedView !== 'list';
     $('tl-nav').hidden = state.schedView !== 'timeline';
@@ -1192,7 +1191,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     $('sched-list').innerHTML = upcoming.length ? upcoming.map(r => reqCard(r, profiles)).join('') : `<div class="empty">${esc(t('noScheduleList'))}</div>`;
 
     // timeline: from the agents' history when there is any (who was on each card each day), else from bookings
-    const DW = 36;
+    const DW = 34;
     let liveBars = null;
     if (Object.values(state.live.hist).some(h => h && h.length)) {
       liveBars = [];
@@ -1258,8 +1257,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       </div></div>
       ${legend || `<div class="nodata">${esc(liveBars ? t('noSchedule') : t('noAgentTimeline'))}</div>`}` : `<div class="empty">${esc(t('noNodes'))}</div>`;
   }
-  $('sched-view').addEventListener('click', (ev) => { const b = ev.target.closest('[data-view]'); if (b) { state.schedView = b.dataset.view; render(); } });
-  $('tl-nav').addEventListener('click', (ev) => { const b = ev.target.closest('[data-shift]'); if (!b) return; const n = Number(b.dataset.shift); state.tlStart = n === 0 ? mondayOf(TODAY) : addDays(state.tlStart, n); render(); });
+  $('tl-nav').addEventListener('click', (ev) => { const b = ev.target.closest('[data-shift]'); if (!b) return; const n = Number(b.dataset.shift); state.tlStart = n === 0 ? addDays(TODAY, -29) : addDays(state.tlStart, n); render(); });
 
   // ----- statistics -----
   function statsPeriod() {
