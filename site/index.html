@@ -369,13 +369,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       <header><h2 data-i18n="assignTitle">Default assignment</h2><span class="hint" data-i18n="assignHint">Who a card belongs to when nobody has booked it. Bookings take priority. Edit assignments.json in the repository to change it.</span></header>
       <div class="body"><div class="table-wrap" id="assign-table"></div></div>
     </div>
-    <div style="height:14px"></div>
-    <section class="panel" id="admin-panel">
-      <header>
-        <h2 data-i18n="tabGpus">Node details</h2>
-      </header>
-      <div class="body" id="admin-body"></div>
-    </section>
   </section>
 
   <section class="panel" id="schedule-panel">
@@ -680,7 +673,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   const personHTML = (p, uid) => `<span class="person" title="${esc(uid)}">${p ? `<img src="${esc(p.avatarUrl)}" alt="" loading="lazy">` : ''}<span>${esc(nameOf({ [uid]: p }, uid))}</span>${p && p.name !== uid ? `<span class="login">${esc(uid)}</span>` : ''}</span>`;
   // Identity comes from a GitHub token the person pastes once; GitHub tells us who they are and what they may do.
   function refreshAdmin() {
-    $('admin-panel').hidden = false;
     renderRole();
   }
   function renderRole() {
@@ -877,7 +869,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     renderTargets(profiles);
     renderSchedule(reqs, profiles);
     renderStats(reqs, profiles);
-    renderAdmin(reqs, profiles);
   }
 
   function renderGpus(reqs, profiles) {
