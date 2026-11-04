@@ -41,6 +41,14 @@ codes expire after 7 days, so replace it when needed) and it shows under the ðŸ’
   with `uid`, `gpuId`, `slots`, `count`, `start`, `end` (inclusive dates), `modelSize`, `vramGb`, and
   `closedAt` / `cancelled` once it ends.
 
+## Live usage (node agents)
+
+Each node runs [`agent/report.py`](agent/report.py) from cron every 30 minutes. It reports every
+card's memory use, utilisation and the Linux users running on it to `status/<node>.json` and a
+30-day history. The dashboard's node cards, timeline and statistics are built from these reports;
+a card counts as busy above 1 GB used or 5% utilisation. Install steps: [`agent/README.md`](agent/README.md).
+Map Linux usernames to people in `members.json` under `linux`.
+
 ## How it works
 
 The page is static (GitHub Pages, deployed by the workflow in `.github/workflows/pages.yml`).

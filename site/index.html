@@ -108,6 +108,12 @@ p { margin: 0; }
 .gpu .users { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 8px; }
 .gpu .users span { background: var(--surface-2); padding: 1px 6px; border-radius: 4px; }
 .gpu .users span .mono { background: none; padding: 0; }
+.gpu .users.livelist { flex-direction: column; gap: 4px; }
+.gpu .users.livelist span { background: none; padding: 0; }
+.livecard { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; width: 100%; }
+.livecard .memtrack { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.livecard .memtrack i { display: block; height: 100%; border-radius: 4px; }
+.hint.stale { color: var(--warn); }
 .empty { background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius); padding: 24px; text-align: center; color: var(--muted); }
 
 /* panels */
@@ -462,7 +468,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     en: {
       title: 'Lab GPU Scheduler', identifying: 'Identifying you…', roleGuest: 'Guest', roleMember: 'Member', roleAdmin: 'Admin',
       nodes: 'GPU nodes', queryDate: 'Date', backToToday: 'Back to today',
-      nodesHint: 'Each square is one card, colored by its owner; a split square is shared by two people. Click a node to filter the timeline below; change the date to see any day.',
+      nodesHint: 'Live from the nodes: each square is one card, colored by who is running on it right now (reported every 30 minutes). Click a node to filter the timeline below; change the date to see who used what on any day.',
       assignTitle: 'Card assignment', assignHint: 'Every card has a standing owner. Switch on “Can share” if others may run on your cards (coordinate in the WeChat group). Owners are set in assignments.json.', thOwner: 'Owner', thShare: 'Can share', thCards: 'Cards', defaultOwner: (n) => `default: ${n}`, defaultPurpose: 'Standing assignment',
       shareYes: 'Yes, others may use these', shareNo: 'No', shareToggleHint: 'Let others run on your cards; coordinate in the WeChat group.', shareOwnerOnly: 'Only the owner (or an admin) can change this.', tShareOn: 'Your cards are now shareable', tShareOff: 'Your cards are no longer shareable',
       clusterTitle: 'Whole cluster', freeCards: (n) => `${n} free`, maintCards: (n) => `${n} in maintenance`, overAlloc: 'over-allocated',
@@ -518,6 +524,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       nameLabel: 'Your real name (shown on your bookings so everyone knows who holds the cards)', vName: 'Please enter your real name.',
       targets: 'Targets', targetsHint: 'What everyone is working toward. Edit your own row; admins can edit any.', thMember: 'Member', thVenue: 'Target venue', thDeadline: 'Deadline', thDue: 'Time left', thNote: 'Note', targetNotePh: 'e.g. main experiments, then ablations', edit: 'Edit', save: 'Save', cancelEdit: 'Cancel', tTargetSaved: 'Target saved',
       daysLeft: (n) => `${n} day${n === 1 ? '' : 's'} left`, dueToday: 'due today', daysAgo: (n) => `${n} day${n === 1 ? '' : 's'} ago`,
+      unknownUser: 'unknown user', ofDay: 'of the day', idle: 'idle', liveAt: (tm) => `live · ${tm}`, staleSince: (tm) => `no report since ${tm}`, noAgent: 'No live data yet: install the node agent (see agent/README.md).', noAgentTimeline: 'The timeline fills in once the node agents report usage.', busyFrac: (p) => `busy ${p}% of the day`, liveDays: (n) => `${n} day${n === 1 ? '' : 's'} of data`, activeUsers: 'People seen', samples: 'Samples', noStatsLive: 'No samples in this period yet.', noSample: (d) => `${d}: no samples`,
+      statsHintLive: 'From the node agents’ 30-minute samples. A card counts as busy when it holds more than 1 GB or shows ≥5% utilisation. Card-days = busy samples ÷ 48.',
       roleViewer: 'Viewer', signIn: 'Sign in', signOut: 'Sign out', addAccount: 'Add account…', signInTitle: 'Sign in with a GitHub token (one time)', tokenLabel: 'Token', tokenSave: 'Sign in',
       tokenHint: 'Stored only in this browser. It is sent to api.github.com and nowhere else.',
       signInSteps: (url, repo) => [
@@ -557,7 +565,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
   const state = {
     myId: null, isAdmin: false, canWrite: false, token: null, repo: REPO, generatedAt: '',
-    gpus: [], requests: [], sha: null, nodesSha: null, members: {}, assignments: [], rules: null, targets: [], editingTarget: null,
+    gpus: [], requests: [], sha: null, nodesSha: null, members: {}, assignments: [], rules: null, targets: [], editingTarget: null, linux: {}, live: { now: {}, hist: {} }, histAt: 0, linux: {}, live: { now: {}, hist: {} }, histAt: 0,
     adminTab: 'gpus', confirmKey: null,
     queryDay: TODAY, filterGpu: null, colors: {},
     noticeKey: null, noticeKind: '', booted: false,
@@ -589,6 +597,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     if (r.status === 'released') { const closed = (r.closedAt || '').slice(0, 10); return { start: r.start, end: closed && closed < r.end ? closed : r.end }; }
     return null;
   }
+  const fmtTime = (iso) => { const d = new Date(iso); if (isNaN(d)) return ''; const same = localDay(iso) === TODAY; return (same ? '' : `${d.getMonth() + 1}/${d.getDate()} `) + `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
   const parseIds = (raw) => String(raw || '').split(/[\s,，、]+/).filter(Boolean).map(Number);
   const activeOn = (r, day) => r.status === 'approved' && r.start <= day && r.end >= day;
   const heldOn = (r, day) => { const h = heldRange(r); return !!h && h.start <= day && h.end >= day; };
@@ -676,6 +685,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   async function names(ids) {
     const out = {};
     for (const id of new Set(ids.filter(Boolean))) {
+      if (id.startsWith('~')) { out[id] = { id, name: id.slice(1), login: id, avatarUrl: '' }; continue; }
       const c = nameCache[id];
       if (!c || Date.now() - c.at > NAME_TTL) fetchName(id);
       out[id] = { id, name: state.members[id] || (c && c.name) || id, login: id, avatarUrl: `https://github.com/${encodeURIComponent(id)}.png?size=40` };
@@ -684,7 +694,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     return out;
   }
   state.profileCache = {};
-  const nameOf = (profiles, uid) => (profiles[uid] && profiles[uid].name) || uid || t('member');
+  const nameOf = (profiles, uid) => uid && uid.startsWith('~') ? (uid === '~?' ? t('unknownUser') : uid.slice(1)) : ((profiles[uid] && profiles[uid].name) || uid || t('member'));
   const personHTML = (p, uid) => `<span class="person" title="${esc(uid)}">${p ? `<img src="${esc(p.avatarUrl)}" alt="" loading="lazy">` : ''}<span>${esc(nameOf({ [uid]: p }, uid))}</span>${p && p.name !== uid ? `<span class="login">${esc(uid)}</span>` : ''}</span>`;
   // Identity comes from a GitHub token the person pastes once; GitHub tells us who they are and what they may do.
   function refreshAdmin() {
@@ -716,15 +726,55 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     const f = await gh(`/repos/${state.repo}/contents/${path}?ref=main`);
     return { sha: f.sha, data: JSON.parse(b64dec(f.content)) };
   }
+  // Live usage from the node agents: status/<node>.json (latest) and status/<node>-history.json (30 days of samples)
+  async function loadLive(withHistory) {
+    await Promise.all(state.gpus.map(async g => {
+      try { state.live.now[g.id] = (await readFile(`status/${g.id}.json`)).data; } catch { delete state.live.now[g.id]; }
+      if (withHistory) { try { state.live.hist[g.id] = (await readFile(`status/${g.id}-history.json`)).data.samples || []; } catch { state.live.hist[g.id] = []; } }
+    }));
+    if (withHistory) state.histAt = Date.now();
+  }
+  const liveUid = (u) => state.linux[u] || ('~' + u);
+  const gpuBusy = (x) => (x.mem ?? x.memUsed ?? 0) > 1024 || (x.util || 0) >= 5 || ((x.users || []).length > 0);
+  const hasLive = () => Object.values(state.live.hist).some(h => h && h.length) || Object.keys(state.live.now).length > 0;
+  const localDay = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+  // Per card for one day: how many samples, how many busy, and who was on it most.
+  function dayModel(nodeId, day) {
+    const out = [];
+    for (const smp of (state.live.hist[nodeId] || [])) {
+      if (localDay(smp.at) !== day) continue;
+      for (const x of (smp.gpus || [])) {
+        const c = out[x.i] = out[x.i] || { n: 0, busy: 0, users: {}, mem: 0, util: 0 };
+        c.n++; c.mem += x.mem || 0; c.util += x.util || 0;
+        if (gpuBusy(x)) { c.busy++; for (const u of (x.users || [])) { const id = liveUid(u); c.users[id] = (c.users[id] || 0) + 1; } }
+      }
+    }
+    for (const c of out) if (c) { c.top = Object.entries(c.users).sort((a, b) => b[1] - a[1])[0]; c.top = c.top ? c.top[0] : null; }
+    return out;
+  }
+  // Holders of each card on a day, from live data: today = the latest snapshot, other days = the day's dominant user.
+  function liveHolders(g, day) {
+    const by = [];
+    if (day === TODAY && state.live.now[g.id]) {
+      for (const x of (state.live.now[g.id].gpus || [])) if (gpuBusy(x)) by[x.i] = (x.users && x.users.length ? x.users.map(liveUid) : ['~?']).slice(0, 2).map(uid => ({ uid, mem: x.memUsed, tot: x.memTotal, util: x.util, live: true }));
+      return by;
+    }
+    const dm = dayModel(g.id, day);
+    if (!dm.length) return null;
+    dm.forEach((c, i) => { if (c && c.busy && c.top) by[i] = [{ uid: c.top, live: true, frac: c.busy / c.n, mem: Math.round(c.mem / c.n), util: Math.round(c.util / c.n) }]; });
+    return by;
+  }
   async function loadAll() {
     const [b, n, m, a] = await Promise.all([readFile('bookings.json'), readFile('nodes.json'), readFile('members.json').catch(() => ({ data: { names: {} } })), readFile('assignments.json').catch(() => ({ data: { assignments: [] } }))]);
     state.members = (m.data && m.data.names) || {};
+    state.linux = (m.data && m.data.linux) || {};
     state.assignments = (a.data && a.data.assignments) || [];
     try { state.rules = (await readFile('policy.json')).data; } catch { state.rules = null; }
     try { state.targets = (await readFile('targets.json')).data.targets || []; } catch { state.targets = []; }
     renderRules();
     state.sha = b.sha; state.requests = (b.data.bookings || []).map(normalize);
     state.nodesSha = n.sha; state.gpus = (n.data || []).slice().sort((a, c) => a.name.localeCompare(c.name));
+    await loadLive(Date.now() - state.histAt > 25 * 60000);
     state.generatedAt = new Date().toISOString();
   }
   function normalize(b) {
@@ -834,9 +884,13 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   async function render() {
     const seq = ++renderSeq;
     const reqs = allRequests();
-    const profiles = await names([...reqs.map(r => r.uid), ...reqs.map(r => r.decision && r.decision.decidedBy), ...state.assignments.map(a => a.uid)]);
+    const liveIds = []; for (const snap of Object.values(state.live.now)) for (const x of (snap.gpus || [])) for (const u of (x.users || [])) liveIds.push(liveUid(u)); for (const h of Object.values(state.live.hist)) for (const smp of (h || [])) for (const x of (smp.gpus || [])) for (const u of (x.users || [])) liveIds.push(liveUid(u));
+    const profiles = await names([...reqs.map(r => r.uid), ...reqs.map(r => r.decision && r.decision.decidedBy), ...state.assignments.map(a => a.uid), ...liveIds]);
     if (seq !== renderSeq) return;
-    state.colors = colorMap([...reqs.map(r => r.uid), ...state.assignments.map(a => a.uid)]);   // one color per person, the same in every view
+    const liveUids = [];
+    for (const snap of Object.values(state.live.now)) for (const x of (snap.gpus || [])) for (const u of (x.users || [])) liveUids.push(liveUid(u));
+    for (const h of Object.values(state.live.hist)) for (const smp of (h || [])) for (const x of (smp.gpus || [])) for (const u of (x.users || [])) liveUids.push(liveUid(u));
+    state.colors = colorMap([...state.assignments.map(a => a.uid), ...reqs.filter(r => !r.isDefault).map(r => r.uid), ...liveUids]);   // one color per person, the same in every view
     state.slots = {}; for (const g of state.gpus) Object.assign(state.slots, assignSlots(g, reqs));   // rid -> card indices
     renderGpus(reqs, profiles);
     renderCalendar(reqs);
@@ -865,7 +919,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     const byUser = {};   // cards held per person across the cluster, for the stacked bar
     grid.innerHTML = state.gpus.map(g => {
       const active = reqs.filter(r => r.gpuId === g.id && activeOn(r, day)).sort((a, b) => a.start.localeCompare(b.start));
-      const by = holdersOn(g.id, day, reqs);
+      const liveBy = liveHolders(g, day);
+      const by = liveBy || holdersOn(g.id, day, reqs);
+      const isLive = !!liveBy;
       const used = Math.min(g.cards, by.filter((h, i) => i < g.cards && h && h.length).length);
       const maint = g.status === 'maintenance';
       if (!maint) { totalCards += g.cards; usedCards += used; for (let i = 0; i < g.cards; i++) for (const r of (by[i] || [])) byUser[r.uid] = (byUser[r.uid] || 0) + 1 / by[i].length; }
@@ -879,11 +935,22 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         else if (i >= g.cards) squares += `<i class="over" title="GPU ${i} · ${esc(h.map(r => nameOf(profiles, r.uid)).join(' + '))} · ${esc(t('overAlloc'))}"></i>`;
         else {
           const bg = h.length === 1 ? `background:${colors[h[0].uid]}` : `background:linear-gradient(135deg, ${colors[h[0].uid]} 50%, ${colors[h[1].uid]} 50%)`;
-          const who = h.map(r => `${nameOf(profiles, r.uid)} · ${r.start} → ${r.end}`).join('\n');
+          const who = h.map(r => r.live ? `${nameOf(profiles, r.uid)}${r.mem != null ? ` · ${(r.mem / 1024).toFixed(1)}/${(r.tot ? r.tot / 1024 : (g.memoryGb || 0)).toFixed(0)} GB · ${r.util ?? 0}%` : ''}${r.frac != null ? ` · ${Math.round(r.frac * 100)}% ${t('ofDay')}` : ''}` : `${nameOf(profiles, r.uid)} · ${r.start} → ${r.end}`).join('\n');
           squares += `<i class="held" style="${bg}" title="GPU ${i}${h.length > 1 ? ' · ' + esc(t('shared')) : (h[0].share ? ' · ' + esc(t('tagShare')) : '')}&#10;${esc(who)}"></i>`;
         }
       }
-      const who = active.map(r => `<span title="${esc(r.start)} → ${esc(r.end)}"><i class="dot" style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colors[r.uid]};margin-right:4px;vertical-align:0"></i>${esc(nameOf(profiles, r.uid))} ×${r.count} <span class="mono">${esc(t('until'))} ${esc(r.end.slice(5))}</span></span>`).join('');
+      let who = '';
+      let liveStamp = '';
+      if (isLive && day === TODAY && state.live.now[g.id]) {
+        const snap = state.live.now[g.id];
+        const age = (Date.now() - new Date(snap.at)) / 60000;
+        liveStamp = `<div class="hint ${age > 90 ? 'stale' : ''}">${esc(age > 90 ? t('staleSince', fmtTime(snap.at)) : t('liveAt', fmtTime(snap.at)))}</div>`;
+        who = (snap.gpus || []).map(x => { const pct = x.memTotal ? Math.round(x.memUsed / x.memTotal * 100) : 0; const u = (x.users || []).map(liveUid); return `<div class="livecard"><span class="mono">GPU ${x.i}</span><div class="memtrack" title="${esc((x.memUsed / 1024).toFixed(1))}/${esc((x.memTotal / 1024).toFixed(0))} GB"><i style="width:${pct}%;background:${u.length ? colors[u[0]] : 'var(--muted)'}"></i></div><span class="mono">${esc((x.memUsed / 1024).toFixed(1))}/${esc((x.memTotal / 1024).toFixed(0))}G · ${x.util}%</span><span>${u.length ? esc(u.map(id => nameOf(profiles, id)).join(', ')) : `<span class="hint">${esc(t('idle'))}</span>`}</span></div>`; }).join('');
+      } else if (isLive) {
+        who = by.map((h, i) => h && h.length ? `<span><i class="dot" style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colors[h[0].uid]};margin-right:4px;vertical-align:0"></i>GPU ${i}: ${esc(nameOf(profiles, h[0].uid))} <span class="mono">${Math.round((h[0].frac || 0) * 100)}%</span></span>` : '').join('');
+      } else {
+        who = active.map(r => `<span title="${esc(r.start)} → ${esc(r.end)}"><i class="dot" style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colors[r.uid]};margin-right:4px;vertical-align:0"></i>${esc(nameOf(profiles, r.uid))} ×${r.count}</span>`).join('');
+      }
       const selected = state.filterGpu === g.id ? ' selected' : '';
       const pill = maint ? `<span class="pill">${esc(t('maintenance'))}</span>` : (used >= g.cards ? `<span class="pill pending">${esc(t('full'))}</span>` : `<span class="pill approved">${esc(t('available'))}</span>`);
       return `<div class="gpu ${maint ? 'maintenance' : ''}${selected}" data-gpu="${esc(g.id)}" role="button" tabindex="0" aria-pressed="${selected ? 'true' : 'false'}">
@@ -891,7 +958,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         <div class="spec mono">${esc(g.cards)}× ${esc(g.model)}${g.memoryGb ? ' · ' + esc(g.memoryGb) + 'GB' : ''}</div>
         <div class="cards">${squares}</div>
         <div class="usage mono"><span>${esc(t('inUse', dayLabel))} ${used}/${g.cards}</span><span>${esc(t('free', Math.max(0, g.cards - used)))}</span></div>
-        ${who ? `<div class="users">${who}</div>` : `<div class="users">${esc(t('nobody', dayLabel))}</div>`}
+        ${who ? `<div class="users ${isLive && day === TODAY ? 'livelist' : ''}">${who}</div>` : `<div class="users">${esc(isLive ? t('nobody', dayLabel) : t('noAgent'))}</div>`}
+        ${liveStamp}
         ${g.note ? `<div class="spec">${esc(g.note)}</div>` : ''}
       </div>`;
     }).join('');
@@ -907,7 +975,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       const users = Object.entries(byUser).sort((a, b) => b[1] - a[1]);
       const held = users.reduce((s, u) => s + u[1], 0);
       const free = Math.max(0, totalCards - Math.min(held, totalCards));
-      const realCount = {}; for (const r of reqs) if (activeOn(r, day) && gpuById(r.gpuId) && gpuById(r.gpuId).status !== 'maintenance') realCount[r.uid] = (realCount[r.uid] || 0) + r.count;
+      const realCount = {}; for (const [u, n] of Object.entries(byUser)) realCount[u] = Math.round(n);
       const seg = (n, style, title) => n > 0 ? `<i style="flex:${n} 0 0;${style}" title="${esc(title)}"></i>` : '';
       cluster.innerHTML = `
         <div class="top"><h3>${esc(t('clusterTitle'))}</h3><span class="count">${esc(dayLabel)} · ${usedCards}/${totalCards} · ${totalCards ? Math.round(usedCards / totalCards * 100) : 0}%</span></div>
@@ -1123,11 +1191,29 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     const upcoming = approved.filter(r => !r.isDefault && r.end >= TODAY).sort((a, b) => a.start.localeCompare(b.start) || a.gpuId.localeCompare(b.gpuId));
     $('sched-list').innerHTML = upcoming.length ? upcoming.map(r => reqCard(r, profiles)).join('') : `<div class="empty">${esc(t('noScheduleList'))}</div>`;
 
-    // timeline
+    // timeline: from the agents' history when there is any (who was on each card each day), else from bookings
     const DW = 36;
+    let liveBars = null;
+    if (Object.values(state.live.hist).some(h => h && h.length)) {
+      liveBars = [];
+      for (const node of nodes) {
+        const days = {};
+        for (const smp of (state.live.hist[node.id] || [])) { const d = localDay(smp.at); if (d) days[d] = true; }
+        const perCard = {};
+        for (const d of Object.keys(days).sort()) { const dm = dayModel(node.id, d); dm.forEach((c, i) => { if (c && c.busy && c.top) (perCard[i] = perCard[i] || []).push({ day: d, uid: c.top, frac: c.busy / c.n }); }); }
+        for (const [i, list] of Object.entries(perCard)) {
+          let cur = null;
+          for (const e of list) {
+            if (cur && cur.uid === e.uid && addDays(cur.end, 1) === e.day) { cur.end = e.day; cur.fracs.push(e.frac); }
+            else { cur = { id: `l_${node.id}_${i}_${e.day}`, uid: e.uid, gpuId: node.id, count: 1, start: e.day, end: e.day, fracs: [e.frac], status: 'approved', purpose: '', slot: Number(i) }; liveBars.push(cur); }
+          }
+        }
+      }
+      for (const b of liveBars) { state.slots[b.id] = [b.slot]; b.purpose = t('busyFrac', Math.round(b.fracs.reduce((a, c) => a + c, 0) / b.fracs.length * 100)); }
+    }
     const wStart = state.tlStart, wEnd = addDays(wStart, state.tlDays - 1);
-    const inWindow = approved.filter(r => r.start <= wEnd && r.end >= wStart);
-    $('sched-count').textContent = inWindow.filter(r => !r.isDefault).length ? t('approvedCount', inWindow.filter(r => !r.isDefault).length) : '';
+    const inWindow = (liveBars || approved).filter(r => r.start <= wEnd && r.end >= wStart);
+    $('sched-count').textContent = liveBars ? t('liveDays', Object.values(state.live.hist).reduce((m, h) => Math.max(m, new Set((h || []).map(x => localDay(x.at))).size), 0)) : (inWindow.filter(r => !r.isDefault).length ? t('approvedCount', inWindow.filter(r => !r.isDefault).length) : '');
     const colors = state.colors;
     let days = '';
     const weekends = [];
@@ -1170,7 +1256,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         <div class="names">${namesCol}</div>
         <div class="track"><div class="days">${days}</div>${rows}${todayLine}</div>
       </div></div>
-      ${legend || `<div class="nodata">${esc(t('noSchedule'))}</div>`}` : `<div class="empty">${esc(t('noNodes'))}</div>`;
+      ${legend || `<div class="nodata">${esc(liveBars ? t('noSchedule') : t('noAgentTimeline'))}</div>`}` : `<div class="empty">${esc(t('noNodes'))}</div>`;
   }
   $('sched-view').addEventListener('click', (ev) => { const b = ev.target.closest('[data-view]'); if (b) { state.schedView = b.dataset.view; render(); } });
   $('tl-nav').addEventListener('click', (ev) => { const b = ev.target.closest('[data-shift]'); if (!b) return; const n = Number(b.dataset.shift); state.tlStart = n === 0 ? mondayOf(TODAY) : addDays(state.tlStart, n); render(); });
@@ -1208,7 +1294,106 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       rejected: reqs.filter(r => r.decision && r.decision.status === 'rejected' && (r.decision.decidedAt || '').slice(0, 10) >= period.start).length,
       pending: reqs.filter(r => r.status === 'pending').length };
   }
+  const DC = { W: 600, H: 150, PL: 32, PR: 8, PT: 10, PB: 22 };
+  function dailyChart(daily) {
+    const { W, H, PL, PR, PT, PB } = DC;
+    const n = daily.length, x = (i) => PL + (n > 1 ? i / (n - 1) : 0.5) * (W - PL - PR);
+    const yOf = (p) => PT + (1 - p / 100) * (H - PT - PB);
+    const pts = daily.map((d, i) => [x(i), yOf(d.total ? d.used / d.total * 100 : 0)]);
+    const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+    const area = line + ` L${pts[n - 1][0].toFixed(1)} ${yOf(0)} L${pts[0][0].toFixed(1)} ${yOf(0)} Z`;
+    const grid = [0, 50, 100].map(p => `<line x1="${PL}" x2="${W - PR}" y1="${yOf(p)}" y2="${yOf(p)}" stroke="var(--line)" stroke-width="1"/><text x="${PL - 6}" y="${yOf(p) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${p}%</text>`).join('');
+    const tickEvery = n > 40 ? 14 : 7;
+    const lastRegular = Math.floor((n - 1) / tickEvery) * tickEvery;
+    const ticks = daily.map((d, i) => {
+      const regular = i % tickEvery === 0;
+      const last = i === n - 1 && n - 1 - lastRegular >= tickEvery / 2;
+      if (!regular && !last) return '';
+      const anchor = i === 0 ? 'start' : (i === n - 1 ? 'end' : 'middle');
+      return `<text x="${x(i)}" y="${H - 6}" text-anchor="${anchor}" font-size="10" fill="var(--muted)">${esc(fmtShort(d.day))}</text>`;
+    }).join('');
+    return `<div class="line-chart" id="daily-chart">
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t('daily'))}">
+        ${grid}${ticks}
+        <path d="${area}" fill="var(--accent-soft)"/>
+        <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
+        <circle id="daily-dot" r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2" opacity="0"/>
+        <line id="daily-x" y1="${PT}" y2="${yOf(0)}" stroke="var(--muted)" stroke-dasharray="3 3" opacity="0"/>
+      </svg><div class="tip" id="daily-tip" hidden></div></div>`;
+  }
+  function wireDaily(daily) {
+    const { W, H, PL, PR, PT, PB } = DC;
+    const n = daily.length, x = (i) => PL + (n > 1 ? i / (n - 1) : 0.5) * (W - PL - PR);
+    const yOf = (p) => PT + (1 - p / 100) * (H - PT - PB);
+    const pts = daily.map((d, i) => [x(i), yOf(d.total ? d.used / d.total * 100 : 0)]);
+    const svg = $('daily-chart').querySelector('svg'), tip = $('daily-tip'), dot = $('daily-dot'), xl = $('daily-x');
+    const show = (ev) => {
+      const rect = svg.getBoundingClientRect();
+      const px = (ev.clientX - rect.left) / rect.width * W;
+      const i = Math.max(0, Math.min(n - 1, Math.round((px - PL) / (W - PL - PR) * (n - 1))));
+      const d = daily[i], p = pts[i];
+      dot.setAttribute('cx', p[0]); dot.setAttribute('cy', p[1]); dot.setAttribute('opacity', '1');
+      xl.setAttribute('x1', p[0]); xl.setAttribute('x2', p[0]); xl.setAttribute('opacity', '1');
+      tip.hidden = false; tip.textContent = d.known === false ? t('noSample', d.day) : t('tipDaily', d.day, d.used, d.total, d.total ? Math.round(d.used / d.total * 100) : 0);
+      tip.style.left = (p[0] / W * rect.width) + 'px';
+    };
+    svg.addEventListener('mousemove', show); svg.addEventListener('touchmove', (ev) => show(ev.touches[0]), { passive: true });
+    svg.addEventListener('mouseleave', () => { tip.hidden = true; dot.setAttribute('opacity', '0'); xl.setAttribute('opacity', '0'); });
+  }
+  function computeLiveStats(period) {
+    const nodes = state.gpus.filter(g => g.status !== 'maintenance');
+    const nDays = daysBetween(period.start, period.end) + 1;
+    const totalCards = nodes.reduce((s, g) => s + g.cards, 0);
+    const byUser = {}, byNode = {}, dayAgg = {};
+    let busyS = 0, allS = 0;
+    for (const g of nodes) {
+      byNode[g.id] = { busy: 0, n: 0 };
+      for (const smp of (state.live.hist[g.id] || [])) {
+        const d = localDay(smp.at); if (d < period.start || d > period.end) continue;
+        const da = dayAgg[d] = dayAgg[d] || { busy: 0, n: 0 };
+        for (const x of (smp.gpus || [])) {
+          if (x.i >= g.cards) continue;
+          allS++; byNode[g.id].n++; da.n++;
+          if (gpuBusy(x)) { busyS++; byNode[g.id].busy++; da.busy++; const us = (x.users || []).map(liveUid); const ids = us.length ? us : ['~?']; for (const u of ids) byUser[u] = (byUser[u] || 0) + 1 / ids.length; }
+        }
+      }
+    }
+    // a sample is one 30-minute slice of one card: 48 samples = one card-day
+    const daily = []; for (let i = 0; i < nDays; i++) { const d = addDays(period.start, i); const a = dayAgg[d]; daily.push({ day: d, used: a && a.n ? Math.round(a.busy / a.n * totalCards * 10) / 10 : 0, total: totalCards, known: !!(a && a.n) }); }
+    const util = allS ? Math.round(busyS / allS * 100) : 0;
+    const toCd = (n) => Math.round(n / 48 * 10) / 10;
+    return { nDays, totalCards, used: toCd(busyS), avail: toCd(allS), util, byUser: Object.fromEntries(Object.entries(byUser).map(([u, n]) => [u, toCd(n)])), byNodePct: Object.fromEntries(Object.entries(byNode).map(([id, v]) => [id, v.n ? Math.round(v.busy / v.n * 100) : 0])), daily, samples: allS };
+  }
   function renderStats(reqs, profiles) {
+    if (Object.values(state.live.hist).some(h => h && h.length)) return renderLiveStats(profiles);
+    return renderBookingStats(reqs, profiles);
+  }
+  function renderLiveStats(profiles) {
+    document.querySelectorAll('#stats-range button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.range === state.statsRange)));
+    const period = statsPeriod();
+    const s = computeLiveStats(period);
+    const colors = state.colors;
+    const tiles = `<div class="tiles">
+      <div class="tile"><span class="v">${s.util}%</span><span class="l">${esc(t('utilization'))}</span></div>
+      <div class="tile"><span class="v">${s.used}</span><span class="l">${esc(t('cardDays'))} / ${s.avail}</span></div>
+      <div class="tile"><span class="v">${Object.keys(s.byUser).length}</span><span class="l">${esc(t('activeUsers'))}</span></div>
+      <div class="tile"><span class="v">${s.samples}</span><span class="l">${esc(t('samples'))}</span></div>
+    </div>`;
+    if (!s.samples) { $('stats-body').innerHTML = tiles + `<div class="empty">${esc(t('noStatsLive'))}</div>`; return; }
+    const userRows = Object.entries(s.byUser).sort((a, b) => b[1] - a[1]);
+    const top = userRows.slice(0, 8), rest = userRows.slice(8).reduce((acc, r) => acc + r[1], 0);
+    const maxU = Math.max(...top.map(r => r[1]), rest, 0.1);
+    let byUser = top.map(([u, v]) => `<div class="lbl">${esc(nameOf(profiles, u))}</div><div class="track"><div class="bar" style="width:${v / maxU * 100}%;background:${colors[u]}"></div></div><div class="val">${esc(t('cd', v))}</div>`).join('');
+    if (rest) byUser += `<div class="lbl">${esc(t('other'))}</div><div class="track"><div class="bar" style="width:${rest / maxU * 100}%;background:var(--s-other)"></div></div><div class="val">${esc(t('cd', rest))}</div>`;
+    const byNode = state.gpus.filter(g => g.status !== 'maintenance').map(g => `<div class="lbl">${esc(g.name)}</div><div class="track"><div class="bar" style="width:${s.byNodePct[g.id] || 0}%"></div></div><div class="val">${s.byNodePct[g.id] || 0}%</div>`).join('');
+    $('stats-body').innerHTML = tiles + `<div class="charts">
+      <div class="chart"><h3>${esc(t('byUser'))}</h3><div class="hbars">${byUser}</div></div>
+      <div class="chart"><h3>${esc(t('byNode'))}</h3><div class="hbars">${byNode}</div></div>
+      <div class="chart wide"><h3>${esc(t('daily'))}</h3>${dailyChart(s.daily)}</div>
+    </div><p class="hint">${esc(t('statsHintLive'))}</p>`;
+    wireDaily(s.daily);
+  }
+  function renderBookingStats(reqs, profiles) {
     document.querySelectorAll('#stats-range button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.range === state.statsRange)));
     const period = statsPeriod();
     const s = computeStats(reqs, period);
@@ -1235,52 +1420,14 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       return `<div class="lbl">${esc(g.name)}</div><div class="track"><div class="bar" style="width:${pct}%"></div></div><div class="val">${pct}%</div>`;
     }).join('');
 
-    // daily utilization line with a hover readout
-    const W = 600, H = 150, PL = 32, PR = 8, PT = 10, PB = 22;
-    const n = s.daily.length, x = (i) => PL + (n > 1 ? i / (n - 1) : 0.5) * (W - PL - PR);
-    const yOf = (p) => PT + (1 - p / 100) * (H - PT - PB);
-    const pts = s.daily.map((d, i) => [x(i), yOf(d.total ? d.used / d.total * 100 : 0)]);
-    const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
-    const area = line + ` L${pts[n - 1][0].toFixed(1)} ${yOf(0)} L${pts[0][0].toFixed(1)} ${yOf(0)} Z`;
-    const grid = [0, 50, 100].map(p => `<line x1="${PL}" x2="${W - PR}" y1="${yOf(p)}" y2="${yOf(p)}" stroke="var(--line)" stroke-width="1"/><text x="${PL - 6}" y="${yOf(p) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${p}%</text>`).join('');
-    const tickEvery = n > 40 ? 14 : 7;
-    // regular ticks every week (or two); the last day only when it is not crowding the previous tick
-    const lastRegular = Math.floor((n - 1) / tickEvery) * tickEvery;
-    const ticks = s.daily.map((d, i) => {
-      const regular = i % tickEvery === 0;
-      const last = i === n - 1 && n - 1 - lastRegular >= tickEvery / 2;
-      if (!regular && !last) return '';
-      const anchor = i === 0 ? 'start' : (i === n - 1 ? 'end' : 'middle');
-      return `<text x="${x(i)}" y="${H - 6}" text-anchor="${anchor}" font-size="10" fill="var(--muted)">${esc(fmtShort(d.day))}</text>`;
-    }).join('');
-    const chart = `<div class="line-chart" id="daily-chart">
-      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t('daily'))}">
-        ${grid}${ticks}
-        <path d="${area}" fill="var(--accent-soft)"/>
-        <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
-        <circle id="daily-dot" r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2" opacity="0"/>
-        <line id="daily-x" y1="${PT}" y2="${yOf(0)}" stroke="var(--muted)" stroke-dasharray="3 3" opacity="0"/>
-      </svg><div class="tip" id="daily-tip" hidden></div></div>`;
-
+    const chart = dailyChart(s.daily);
     $('stats-body').innerHTML = tiles + `<div class="charts">
       <div class="chart"><h3>${esc(t('byUser'))}</h3><div class="hbars">${byUser}</div></div>
       <div class="chart"><h3>${esc(t('byNode'))}</h3><div class="hbars">${byNode}</div></div>
       <div class="chart wide"><h3>${esc(t('daily'))}</h3>${chart}</div>
     </div><p class="hint">${esc(t('statsHint'))}</p>`;
 
-    const svg = $('daily-chart').querySelector('svg'), tip = $('daily-tip'), dot = $('daily-dot'), xl = $('daily-x');
-    const show = (ev) => {
-      const rect = svg.getBoundingClientRect();
-      const px = (ev.clientX - rect.left) / rect.width * W;
-      const i = Math.max(0, Math.min(n - 1, Math.round((px - PL) / (W - PL - PR) * (n - 1))));
-      const d = s.daily[i], p = pts[i];
-      dot.setAttribute('cx', p[0]); dot.setAttribute('cy', p[1]); dot.setAttribute('opacity', '1');
-      xl.setAttribute('x1', p[0]); xl.setAttribute('x2', p[0]); xl.setAttribute('opacity', '1');
-      tip.hidden = false; tip.textContent = t('tipDaily', d.day, d.used, d.total, d.total ? Math.round(d.used / d.total * 100) : 0);
-      tip.style.left = (p[0] / W * rect.width) + 'px';
-    };
-    svg.addEventListener('mousemove', show); svg.addEventListener('touchmove', (ev) => show(ev.touches[0]), { passive: true });
-    svg.addEventListener('mouseleave', () => { tip.hidden = true; dot.setAttribute('opacity', '0'); xl.setAttribute('opacity', '0'); });
+    wireDaily(s.daily);
   }
   $('stats-range').addEventListener('click', (ev) => { const b = ev.target.closest('[data-range]'); if (b) { state.statsRange = b.dataset.range; render(); } });
 
