@@ -319,7 +319,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       <h1 data-i18n="title">Lab GPU Scheduler</h1>
     </div>
     <div class="right">
-      <button type="button" class="btn chat-link" id="chat-link" hidden>💬 Lab chat</button>
       <div class="me" id="me">
         <img id="me-avatar" alt="" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'/>">
         <div class="who">
@@ -332,7 +331,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
   <div class="notice" id="notice" hidden></div>
   <div class="panel" id="chat-panel" hidden>
-    <header><h2 id="chat-title">Lab chat</h2><button class="link" id="chat-close" type="button">✕</button></header>
+    <header><h2 id="chat-title">Lab chat</h2></header>
     <div class="body"><div class="chat-box"><img id="chat-qr" alt="" hidden><div><p id="chat-emphasis" class="emphasis"></p><p id="chat-note"></p></div></div></div>
   </div>
   <div class="rules" id="rules" hidden>
@@ -964,9 +963,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   function renderRules() {
     const r = state.rules; const box = $('rules');
     const chat = r && r.chat;
-    $('chat-link').hidden = !chat;
+    $('chat-panel').hidden = !chat;
     if (chat) {
-      $('chat-link').textContent = `💬 ${chat.label || 'Lab chat'}`;
       $('chat-title').textContent = chat.label || 'Lab chat';
       $('chat-emphasis').textContent = chat.emphasis || ''; $('chat-emphasis').hidden = !chat.emphasis;
       $('chat-note').textContent = chat.emphasis && chat.note ? chat.note.replace(chat.emphasis, '').trim() : (chat.note || '');
@@ -1427,8 +1425,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     $('signin-steps').innerHTML = t('signInSteps', tokenUrl(), state.repo).map(x => `<li>${x}</li>`).join('');
     $('name-input').value = ''; $('signin-panel').hidden = false; $('token-input').focus();
   }
-  $('chat-link').addEventListener('click', () => { $('chat-panel').hidden = !$('chat-panel').hidden; });
-  $('chat-close').addEventListener('click', () => { $('chat-panel').hidden = true; });
   $('signin-btn').addEventListener('click', () => openSignIn());
   $('signout-btn').addEventListener('click', () => signOut());
   $('acct-switch').addEventListener('change', (ev) => { const v = ev.target.value; if (v === '__add') { renderAccounts(); openSignIn(); } else switchTo(v); });
