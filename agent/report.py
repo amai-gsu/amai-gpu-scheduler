@@ -18,9 +18,18 @@ import sys
 import urllib.request
 from datetime import datetime, timezone
 
+# Settings come from the environment, or from /opt/gpu-scheduler/config written by install.sh.
+CONFIG = "/opt/gpu-scheduler/config"
+if os.path.exists(CONFIG):
+    for line in open(CONFIG):
+        if "=" in line and not line.startswith("#"):
+            k, v = line.strip().split("=", 1)
+            os.environ.setdefault(k, v)
 REPO = os.environ.get("GPU_SCHED_REPO", "amai-gsu/amai-gpu-scheduler")
-TOKEN = os.environ.get("GPU_SCHED_TOKEN")
+TOKEN = os.environ.get("GPU_SCHED_TOKEN", "").strip()
 NODE = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("GPU_SCHED_NODE")
+if TOKEN and not TOKEN.isascii():
+    sys.exit("the token contains non-ASCII characters: paste the real token from GitHub (it starts with ghp_)")
 HISTORY_CAP = 1500
 API = "https://api.github.com"
 
@@ -67,6 +76,10 @@ def api(method, path, body=None):
     except urllib.error.HTTPError as e:
         if e.code == 404:
             return None
+        if e.code == 401:
+            sys.exit("GitHub rejected the token (401). Generate a classic token with the public_repo scope and run install.sh again.")
+        if e.code == 403:
+            sys.exit("GitHub refused the write (403): the token's account needs Write access to " + REPO)
         raise
 
 

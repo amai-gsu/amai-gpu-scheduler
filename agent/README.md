@@ -3,7 +3,16 @@
 One file, `report.py`, run by cron on each GPU node every 30 minutes. It needs only Python 3 and
 `nvidia-smi`.
 
-## Install (once per node, as any user that can run nvidia-smi and `ps`)
+## Install (one command per node)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/amai-gsu/amai-gpu-scheduler/main/agent/install.sh | sudo bash -s ada6000
+```
+
+(`lab2` on the other machine.) It asks for a GitHub token once, tests it, runs one report and
+registers the cron job. Re-run it any time to replace the token.
+
+## Manual install (what the script does)
 
 ```bash
 sudo mkdir -p /opt/gpu-scheduler
