@@ -19,7 +19,7 @@
   },
   "chat": {
     "label": "WeChat group",
-    "note": "Communicate first to get more GPU resources. The lab talks in a WeChat group; ask Hongyu Ke to add you.",
+    "note": "",
     "qr": "wechat-qr.png",
     "emphasis": "Communicate first to get more GPU resources."
   }
