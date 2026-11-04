@@ -24,10 +24,6 @@ the moment you submit it, and the page refuses windows where the cards are alrea
 You need **Write** access to this repository to book. Ask a lab admin to add you under
 Settings → Collaborators.
 
-**Lab chat**: a message board at the bottom of the page. Anyone who can book can post; others see
-it within about 20 seconds. Click *Comment on this booking* under a booking to reply to it with a
-link. Messages live in `chat.json` (last 300 kept) and are public like everything else here.
-
 ## For admins
 
 - **Add a member**: Settings → Collaborators and teams → Add people → role **Write**.
