@@ -143,6 +143,7 @@ a.btn:hover { background: var(--surface-2); }
 a.btn.ok { border-color: var(--ok); color: var(--ok); }
 button.chat-link { padding: 6px 12px; font-size: 13px; }
 .chat-box { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.chat-box .emphasis { font-size: 16px; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
 .chat-box img { width: 160px; height: 160px; border-radius: 6px; border: 1px solid var(--line); background: #fff; }
 button.link:hover { color: var(--fg); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -269,6 +270,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .steps code { font-family: var(--font-mono); background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
 .steps a { color: var(--accent); }
+.targets input { padding: 4px 8px; }
+.targets .due { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.targets .due.soon { color: var(--warn); font-weight: 600; }
+.targets .due.urgent { color: var(--bad); font-weight: 600; }
+.targets .due.past { color: var(--muted); }
 .switch { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; }
 .switch.ro { cursor: default; color: var(--muted); }
 .switch input { width: auto; margin: 0; }
@@ -302,7 +308,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   <div class="notice" id="notice" hidden></div>
   <div class="panel" id="chat-panel" hidden>
     <header><h2 id="chat-title">Lab chat</h2><button class="link" id="chat-close" type="button">✕</button></header>
-    <div class="body"><div class="chat-box"><img id="chat-qr" alt="" hidden><p id="chat-note"></p></div></div>
+    <div class="body"><div class="chat-box"><img id="chat-qr" alt="" hidden><div><p id="chat-emphasis" class="emphasis"></p><p id="chat-note"></p></div></div></div>
   </div>
   <div class="rules" id="rules" hidden>
     <section class="panel rule" id="rule-policy"><header><h2 id="policy-title">GPU policy</h2></header><div class="body"><ol id="policy-list"></ol></div></section>
@@ -358,12 +364,15 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   </section>
 
   <div class="cols">
-    <section class="panel">
+    <section class="panel" id="targets-panel">
       <header>
-        <h2 data-i18n="myRequests">My requests</h2>
-        <span class="count" id="my-count"></span>
+        <h2 data-i18n="targets">Targets</h2>
+        <span class="hint" data-i18n="targetsHint">What everyone is working toward. Edit your own row; admins can edit any.</span>
       </header>
-      <div class="body">
+      <div class="body"><div class="table-wrap" id="targets-table"></div></div>
+    </section>
+
+    <div id="booking-legacy" hidden>
         <form id="req-form" autocomplete="off">
           <div class="cal" id="cal">
             <div class="nav">
@@ -404,9 +413,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
             <button type="submit" class="primary" id="f-submit" data-i18n="submit">Book</button>
           </div>
         </form>
-        <div class="reqs" id="my-reqs"></div>
-      </div>
-    </section>
+      <span id="my-count"></span>
+      <div class="reqs" id="my-reqs"></div>
+    </div>
 
     <section class="panel" id="admin-panel" hidden>
       <header>
@@ -455,8 +464,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       title: 'Lab GPU Scheduler', identifying: 'Identifying you…', roleGuest: 'Guest', roleMember: 'Member', roleAdmin: 'Admin',
       nodes: 'GPU nodes', queryDate: 'Date', backToToday: 'Back to today',
       nodesHint: 'Each square is one card, colored by its owner; a split square is shared by two people. Click a node to filter the timeline below; change the date to see any day.',
-      assignTitle: 'Card assignment', assignHint: 'Every card has a standing owner. Switch on “Can share” to let one more person book your cards for a date range; cards that are not shared cannot be booked by others. Owners are set in assignments.json.', thOwner: 'Owner', thShare: 'Can share', thCards: 'Cards', defaultOwner: (n) => `default: ${n}`, defaultPurpose: 'Standing assignment',
-      shareYes: 'Yes, others may book these', shareNo: 'No', shareToggleHint: 'Let one more person run on your cards for the dates they book.', shareOwnerOnly: 'Only the owner (or an admin) can change this.', tShareOn: 'Your cards are now shareable', tShareOff: 'Your cards are no longer shareable',
+      assignTitle: 'Card assignment', assignHint: 'Every card has a standing owner. Switch on “Can share” if others may run on your cards (coordinate in the WeChat group). Owners are set in assignments.json.', thOwner: 'Owner', thShare: 'Can share', thCards: 'Cards', defaultOwner: (n) => `default: ${n}`, defaultPurpose: 'Standing assignment',
+      shareYes: 'Yes, others may use these', shareNo: 'No', shareToggleHint: 'Let others run on your cards; coordinate in the WeChat group.', shareOwnerOnly: 'Only the owner (or an admin) can change this.', tShareOn: 'Your cards are now shareable', tShareOff: 'Your cards are no longer shareable',
       clusterTitle: 'Whole cluster', freeCards: (n) => `${n} free`, maintCards: (n) => `${n} in maintenance`, overAlloc: 'over-allocated',
       myRequests: 'My bookings', fNode: 'Node', fStart: 'Start', fEnd: 'End',
       fPurpose: 'What for (project or deadline)',
@@ -508,6 +517,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       eRate: 'Too many actions at once. Try again in a moment.', eFail: (m) => `Failed: ${m || 'unknown error'}`,
       updated: 'updated', nNoData: 'Could not load bookings.json from GitHub. Check the repository and try again.',
       nameLabel: 'Your real name (shown on your bookings so everyone knows who holds the cards)', vName: 'Please enter your real name.',
+      targets: 'Targets', targetsHint: 'What everyone is working toward. Edit your own row; admins can edit any.', thMember: 'Member', thVenue: 'Target venue', thDeadline: 'Deadline', thDue: 'Time left', thNote: 'Note', targetNotePh: 'e.g. main experiments, then ablations', edit: 'Edit', save: 'Save', cancelEdit: 'Cancel', tTargetSaved: 'Target saved',
+      daysLeft: (n) => `${n} day${n === 1 ? '' : 's'} left`, dueToday: 'due today', daysAgo: (n) => `${n} day${n === 1 ? '' : 's'} ago`,
       roleViewer: 'Viewer', signIn: 'Sign in', signOut: 'Sign out', addAccount: 'Add account…', signInTitle: 'Sign in with a GitHub token (one time)', tokenLabel: 'Token', tokenSave: 'Sign in',
       tokenHint: 'Stored only in this browser. It is sent to api.github.com and nowhere else.',
       signInSteps: (url, repo) => [
@@ -547,7 +558,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
   const state = {
     myId: null, isAdmin: false, canWrite: false, token: null, repo: REPO, generatedAt: '',
-    gpus: [], requests: [], sha: null, nodesSha: null, members: {}, assignments: [], rules: null,
+    gpus: [], requests: [], sha: null, nodesSha: null, members: {}, assignments: [], rules: null, targets: [], editingTarget: null,
     adminTab: 'all', confirmKey: null,
     queryDay: TODAY, filterGpu: null, colors: {},
     noticeKey: null, noticeKind: '', booted: false,
@@ -711,6 +722,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     state.members = (m.data && m.data.names) || {};
     state.assignments = (a.data && a.data.assignments) || [];
     try { state.rules = (await readFile('policy.json')).data; } catch { state.rules = null; }
+    try { state.targets = (await readFile('targets.json')).data.targets || []; } catch { state.targets = []; }
     renderRules();
     state.sha = b.sha; state.requests = (b.data.bookings || []).map(normalize);
     state.nodesSha = n.sha; state.gpus = (n.data || []).slice().sort((a, c) => a.name.localeCompare(c.name));
@@ -730,6 +742,18 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       try {
         const res = await gh(`/repos/${state.repo}/contents/bookings.json`, { method: 'PUT', body: JSON.stringify({ message, sha: cur.sha, branch: 'main', content: b64enc(JSON.stringify({ bookings: list }, null, 2) + '\n') }) });
         state.sha = res.content.sha; state.requests = list.map(normalize); return true;
+      } catch (e) { if (e.status !== 409 || attempt) throw e; }
+    }
+  }
+  async function writeTargets(mutate, message) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let cur; try { cur = await readFile('targets.json'); } catch { cur = { sha: undefined, data: { targets: [] } }; }
+      const list = mutate((cur.data.targets || []).map(x => ({ ...x })));
+      if (list === false) return false;
+      try {
+        const body = { message, branch: 'main', content: b64enc(JSON.stringify({ targets: list }, null, 2) + '\n') }; if (cur.sha) body.sha = cur.sha;
+        await gh(`/repos/${state.repo}/contents/targets.json`, { method: 'PUT', body: JSON.stringify(body) });
+        state.targets = list; return true;
       } catch (e) { if (e.status !== 409 || attempt) throw e; }
     }
   }
@@ -818,6 +842,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     renderGpus(reqs, profiles);
     renderCalendar(reqs);
     renderMine(reqs, profiles);
+    renderTargets(profiles);
     renderSchedule(reqs, profiles);
     renderStats(reqs, profiles);
     renderAdmin(reqs, profiles);
@@ -899,7 +924,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     if (chat) {
       $('chat-link').textContent = `💬 ${chat.label || 'Lab chat'}`;
       $('chat-title').textContent = chat.label || 'Lab chat';
-      $('chat-note').textContent = chat.note || '';
+      $('chat-emphasis').textContent = chat.emphasis || ''; $('chat-emphasis').hidden = !chat.emphasis;
+      $('chat-note').textContent = chat.emphasis && chat.note ? chat.note.replace(chat.emphasis, '').trim() : (chat.note || '');
       const img = $('chat-qr');
       if (chat.qr) { img.hidden = false; img.src = chat.qr; img.onerror = () => { img.hidden = true; }; } else img.hidden = true;
     }
@@ -911,6 +937,35 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       $(`${key}-title`).textContent = sec.title || (key === 'policy' ? 'GPU policy' : 'Penalties');
       $(`${key}-list`).innerHTML = (sec.items || []).map(x => `<li>${esc(x)}</li>`).join('');
     }
+  }
+  function renderTargets(profiles) {
+    const uids = [...new Set([...state.targets.map(x => x.uid), ...state.assignments.map(a => a.uid), ...(state.myId && state.canWrite ? [state.myId] : [])])];
+    const rows = uids.map(uid => ({ uid, ...(state.targets.find(x => x.uid === uid) || { venue: '', deadline: '', note: '' }) }))
+      .sort((a, b) => (a.deadline || '9999').localeCompare(b.deadline || '9999') || nameOf(profiles, a.uid).localeCompare(nameOf(profiles, b.uid)));
+    const html = rows.map(r => {
+      const canEdit = state.canWrite && (r.uid === state.myId || state.isAdmin);
+      const editing = state.editingTarget === r.uid;
+      let due = '', cls = '';
+      if (r.deadline) { const n = daysBetween(TODAY, r.deadline); due = n < 0 ? t('daysAgo', -n) : (n === 0 ? t('dueToday') : t('daysLeft', n)); cls = n < 0 ? 'past' : (n <= 3 ? 'urgent' : (n <= 14 ? 'soon' : '')); }
+      const person = `<span class="person">${profiles[r.uid] ? `<img src="${esc(profiles[r.uid].avatarUrl)}" alt="" loading="lazy">` : ''}<span>${esc(nameOf(profiles, r.uid))}</span>${r.uid === state.myId ? ` <span class="hint">(${esc(t('you'))})</span>` : ''}</span>`;
+      if (editing) return `<tr data-uid="${esc(r.uid)}">
+        <td>${person}</td>
+        <td><input type="text" class="t-venue" value="${esc(r.venue)}" placeholder="e.g. CVPR 2027" maxlength="60"></td>
+        <td><input type="date" class="t-deadline" value="${esc(r.deadline)}"></td>
+        <td></td>
+        <td><input type="text" class="t-note" value="${esc(r.note)}" placeholder="${esc(t('targetNotePh'))}" maxlength="120"></td>
+        <td><div class="actions"><button class="sm primary" data-act="savetarget" data-uid="${esc(r.uid)}">${esc(t('save'))}</button><button class="sm" data-act="canceltarget">${esc(t('cancelEdit'))}</button></div></td>
+      </tr>`;
+      return `<tr>
+        <td>${person}</td>
+        <td>${r.venue ? esc(r.venue) : `<span class="hint">—</span>`}</td>
+        <td class="mono">${r.deadline ? esc(r.deadline) : `<span class="hint">—</span>`}</td>
+        <td class="due ${cls}">${esc(due)}</td>
+        <td>${esc(r.note)}</td>
+        <td>${canEdit ? `<button class="sm" data-act="edittarget" data-uid="${esc(r.uid)}">${esc(t('edit'))}</button>` : ''}</td>
+      </tr>`;
+    }).join('');
+    $('targets-table').innerHTML = `<table class="table targets"><thead><tr><th>${esc(t('thMember'))}</th><th>${esc(t('thVenue'))}</th><th>${esc(t('thDeadline'))}</th><th>${esc(t('thDue'))}</th><th>${esc(t('thNote'))}</th><th></th></tr></thead><tbody>${html}</tbody></table>`;
   }
   function renderAssignments(profiles) {
     const panel = $('assign-panel');
@@ -1299,6 +1354,18 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   document.addEventListener('click', async (ev) => {
     const b = ev.target.closest('button[data-act]'); if (!b) return;
     const act = b.dataset.act, rid = b.dataset.rid;
+    if (act === 'edittarget') { state.editingTarget = b.dataset.uid; render(); return; }
+    if (act === 'canceltarget') { state.editingTarget = null; render(); return; }
+    if (act === 'savetarget') {
+      const tr = b.closest('tr'); const uid = b.dataset.uid;
+      const venue = tr.querySelector('.t-venue').value.trim(), deadline = tr.querySelector('.t-deadline').value, note = tr.querySelector('.t-note').value.trim();
+      b.disabled = true;
+      try {
+        await writeTargets(list => { const i = list.findIndex(x => x.uid === uid); const row = { uid, venue, deadline, note }; if (i >= 0) list[i] = row; else list.push(row); return list; }, `Target for ${uid}: ${venue || '-'} ${deadline || ''} (${state.myId})`);
+        state.editingTarget = null; toast(t('tTargetSaved'));
+      } catch (e) { toast(errMsg(e)); }
+      render(); return;
+    }
     try {
       if (act === 'release') {
         if (needsConfirm('mine:' + rid)) return;

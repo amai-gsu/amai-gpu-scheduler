@@ -9,16 +9,11 @@ the moment you submit it, and the page refuses windows where the cards are alrea
 
 1. Open the link above and click **Sign in** (top right). The page walks you through creating a
    GitHub token (classic, `public_repo` scope only). Paste it once; your browser remembers it.
-2. Your own cards (see **Card assignment**) need no booking. To borrow someone else's card they
-   must have switched on **Can share**: click a start and an end day on the calendar, pick the node
-   and the shareable cards, give the model size and expected memory per card, say what it's for,
-   and click **Book**.
-3. Run with the cards you were given, e.g. `CUDA_VISIBLE_DEVICES=0,2`. Ids match `nvidia-smi` on
-   the node.
-4. Done early? Click **Release early** on your booking so others can use the cards.
-   Tick **Can share** when you book if you won't use all the VRAM: one more person can then book
-   the same cards for the same dates (the calendar shows those as `+n`). Tick **Can be preempted**
-   if someone with an urgent deadline may kill your job.
+2. Your cards are listed under **Card assignment**. Switch **Can share** on if others may run on
+   them; to use someone else's cards, they must have shared them, and you agree the details in the
+   WeChat group (ðŸ’¬ button, top right).
+3. Run only on your cards, e.g. `CUDA_VISIBLE_DEVICES=0,2`. Ids match `nvidia-smi` on the node.
+4. Fill in your row under **Targets** (venue, deadline) so everyone can see who is under pressure.
 5. The sign-in box also asks for your real name; it is shown on your bookings so everyone knows
    who holds the cards. Sign in again any time to change it.
 
@@ -39,6 +34,7 @@ codes expire after 7 days, so replace it when needed) and it shows under the ðŸ’
   **Can share** on or off on the page; only shared cards can be booked by someone else.
 - **Add or change nodes**: edit [`nodes.json`](nodes.json) and commit. Fields: `id`, `name`,
   `model`, `cards`, `memoryGb`, `status` (`available` or `maintenance`), `note`.
+- **Targets** live in [`targets.json`](targets.json); members edit their own row on the page.
 - **Fill in people's names**: edit [`members.json`](members.json), `"github-login": "Real Name"`.
   It overrides the GitHub profile name.
 - **Fix a booking by hand**: edit [`bookings.json`](bookings.json); every booking is one object
