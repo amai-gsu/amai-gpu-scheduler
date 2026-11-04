@@ -276,6 +276,16 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .steps code { font-family: var(--font-mono); background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
 .steps a { color: var(--accent); }
+.tcal { display: flex; flex-direction: column; gap: 8px; }
+.tcal .nav { display: flex; justify-content: space-between; align-items: center; }
+.tcal .grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.tcal .dow { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); text-align: center; }
+.tcal .day { min-height: 56px; border-radius: 6px; background: var(--bg); padding: 3px 4px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tcal .day.other { opacity: 0.4; }
+.tcal .day.today { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tcal .day .n { font-size: 11px; color: var(--muted); }
+.tcal .chip { font-size: 11px; line-height: 1.25; color: #fff; border-radius: 4px; padding: 2px 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcal .chip b { font-weight: 600; }
 .targets input { padding: 4px 8px; }
 .table .person { display: inline-flex; align-items: center; gap: 6px; }
 .table .person img { width: 20px; height: 20px; border-radius: 50%; flex: 0 0 20px; }
@@ -357,17 +367,16 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
   <section class="panel" id="schedule-panel">
     <header>
-      <h2 id="sched-title" data-i18n="schedule">Usage, last 30 days</h2>
+      <h2 id="sched-title" data-i18n="schedule">Usage since Nov 1</h2>
       <div class="actions">
         <span class="count" id="sched-count"></span>
         <button class="sm" id="sched-clear" type="button" hidden data-i18n="showAllNodes">Show all nodes</button>
-        <div class="seg" id="tl-nav"><button type="button" data-shift="-7">‹</button><button type="button" data-shift="0" data-i18n="last30btn">Last 30 days</button><button type="button" data-shift="7">›</button></div>
+        <div class="seg" id="tl-nav"><button type="button" data-shift="-7">‹</button><button type="button" data-shift="0" data-i18n="last30btn">Since Nov 1</button><button type="button" data-shift="7">›</button></div>
         
       </div>
     </header>
     <div class="body">
       <div id="sched-timeline"></div>
-      <div class="reqs" id="sched-list" hidden></div>
     </div>
   </section>
 
@@ -376,7 +385,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       <h2 data-i18n="stats">Usage statistics</h2>
       <div class="actions">
         <div class="seg" id="stats-range">
-          <button type="button" data-range="30" aria-pressed="true" data-i18n="last30">Last 30 days</button>
+          <button type="button" data-range="since" aria-pressed="true" data-i18n="sinceNov">Since Nov 1</button>
+          <button type="button" data-range="30" aria-pressed="false" data-i18n="last30">Last 30 days</button>
           <button type="button" data-range="90" aria-pressed="false" data-i18n="last90">Last 90 days</button>
           <button type="button" data-range="month" aria-pressed="false" data-i18n="thisMonth">This month</button>
         </div>
@@ -391,53 +401,15 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         <h2 data-i18n="targets">Targets</h2>
         <span class="hint" data-i18n="targetsHint">What everyone is working toward. Edit your own row; admins can edit any.</span>
       </header>
-      <div class="body"><div class="table-wrap" id="targets-table"></div></div>
+      <div class="body">
+        <div class="tcal">
+          <div class="nav"><button type="button" class="sm" id="tcal-prev">‹</button><b id="tcal-title"></b><button type="button" class="sm" id="tcal-next">›</button></div>
+          <div class="grid" id="tcal-grid"></div>
+        </div>
+        <div class="table-wrap" id="targets-table"></div>
+      </div>
     </section>
 
-    <div id="booking-legacy" hidden>
-        <form id="req-form" autocomplete="off">
-          <div class="cal" id="cal">
-            <div class="nav">
-              <button type="button" class="sm" id="cal-prev">‹</button>
-              <b id="cal-title"></b>
-              <button type="button" class="sm" id="cal-next">›</button>
-            </div>
-            <div class="grid" id="cal-grid"></div>
-            <div class="legend"><span><i style="background:var(--accent)"></i><span data-i18n="calSelected">Selected range</span></span><span><i style="background:var(--warn-soft);border:1px solid var(--warn)"></i><span data-i18n="calFull">No free cards</span></span><span class="hint" data-i18n="calHint">Numbers are free cards on that node. Click a start day, then an end day.</span></div>
-          </div>
-          <div class="range-summary">
-            <label class="inline"><span data-i18n="fStart">Start</span> <input id="f-start" type="date" required></label>
-            <label class="inline"><span data-i18n="fEnd">End</span> <input id="f-end" type="date" required></label>
-            <span class="count" id="range-days"></span>
-          </div>
-          <label><span data-i18n="fNode">Node</span>
-            <select id="f-gpu" required></select>
-          </label>
-          <div class="full">
-            <div class="hint" style="margin-bottom:4px"><span data-i18n="fGpuIds">GPU ids</span> <span class="count" id="pick-summary"></span></div>
-            <div class="picker-cards" id="gpu-pick"></div>
-            <div class="legend" style="margin-top:6px"><span><i style="background:var(--surface-2);border:1px dashed var(--line)"></i><span data-i18n="pickFree">free</span></span><span><i style="background:var(--accent-soft)"></i><span data-i18n="pickShare">shareable</span></span><span><i style="background:var(--warn-soft)"></i><span data-i18n="pickTaken">taken</span></span></div>
-          </div>
-          <label><span data-i18n="fModel">Model size</span>
-            <input id="f-model" type="text" placeholder="e.g. 7B" required maxlength="40">
-          </label>
-          <label><span data-i18n="fVram">Expected memory per card (GB)</span>
-            <input id="f-vram" type="number" min="1" max="200" placeholder="20" required>
-          </label>
-          <label class="full"><span data-i18n="fPurpose">What for (project or deadline)</span>
-            <textarea id="f-purpose" required data-i18n-placeholder="fPurposePh" placeholder="e.g. ACL submission, fine-tuning for the main table"></textarea>
-          </label>
-          <div class="full checks">
-            <label class="check"><input id="f-share" type="checkbox"> <span data-i18n="fShare">Can share: others may run on these cards too (I'm not using all the memory)</span></label>
-            <label class="check"><input id="f-preempt" type="checkbox"> <span data-i18n="fPreempt">Can be preempted: if someone needs the cards urgently, they may kill my job</span></label>
-          </div>
-          <div class="full actions">
-            <button type="submit" class="primary" id="f-submit" data-i18n="submit">Book</button>
-          </div>
-        </form>
-      <span id="my-count"></span>
-      <div class="reqs" id="my-reqs"></div>
-    </div>
 
     <section class="panel" id="admin-panel" hidden>
       <header>
@@ -465,6 +437,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return iso(d); };
   const daysBetween = (a, b) => Math.round((parse(b) - parse(a)) / 86400000);
   const TODAY = iso(new Date());
+  const USAGE_SINCE = '2026-11-01';   // the node agents started reporting in November; nothing before that
 
   // ---------- i18n ----------
   const I18N = {
@@ -483,7 +456,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       tagShare: 'shareable', tagPreempt: 'preemptible',
       submit: 'Book', tabAll: 'All bookings', tabGpus: 'Nodes', fGpuIds: 'Pick the cards you want for these dates', vGpuIds: 'Pick at least one card.', pickFree: 'free', pickShare: 'shareable with the holder', pickTaken: 'taken', pickWith: (n) => `with ${n}`, pickSummary: (n) => `${n} selected`,
       vNoRoom: (n, g) => `Only ${n} card${n === 1 ? '' : 's'} free on ${g} in that window. Pick other dates or fewer cards.`, vTaken: (taken, free) => `GPU ${taken} already booked in that window; free: ${free}.`,
-      schedule: 'Usage, last 30 days', last30btn: 'Last 30 days', showAllNodes: 'Show all nodes', viewTimeline: 'Timeline', viewList: 'List',
+      schedule: 'Usage since Nov 1', last30btn: 'Since Nov 1', showAllNodes: 'Show all nodes', viewTimeline: 'Timeline', viewList: 'List',
       calSelected: 'Selected range', calFull: 'No free cards', calHint: 'Numbers are free cards on that node; +n are cards someone is willing to share. Click a start day, then an end day.', sharedWith: (n) => `sharing with ${n}`, calShareable: (n) => `${n} card${n === 1 ? '' : 's'} shareable with the current holder`, shared: 'shared by two people',
       calNoNode: 'Pick a node to see its free cards per day.',
       rangeDays: (n, c) => `${n} day${n === 1 ? '' : 's'} × ${c} card${c === 1 ? '' : 's'} = ${n * c} card-days`,
@@ -544,7 +517,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       nSignIn: 'Sign in with a GitHub token (top right) to book cards. Without signing in you can only view.',
       nViewOnly: 'Your GitHub account cannot write to this repository. Ask an admin to add you as a collaborator with Write access.',
       nRevoked: 'Your access changed. Reload the page.',
-      stats: 'Usage statistics', last30: 'Last 30 days', last90: 'Last 90 days', thisMonth: 'This month',
+      stats: 'Usage statistics', sinceNov: 'Since Nov 1', last30: 'Last 30 days', last90: 'Last 90 days', thisMonth: 'This month',
       utilization: 'Cluster utilization', cardDays: 'Card-days used', reqApproved: 'Approved', reqRejected: 'Rejected', reqPending: 'Pending now',
       byUser: 'Card-days by person', byNode: 'Utilization by node', daily: 'Daily utilization',
       statsHint: 'Card-days = cards × days held. Utilization = card-days used ÷ card-days available (nodes under maintenance excluded).',
@@ -576,9 +549,10 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     adminSearch: [],               // people picker results
     calMonth: TODAY.slice(0, 7),   // yyyy-mm shown in the picker
     picking: false,                // true after the first click of a range
+    tcalMonth: TODAY.slice(0, 7),
     picked: new Set(),             // GPU ids chosen in the booking form
-    tlStart: addDays(TODAY, -29), tlDays: 30, schedView: 'timeline',
-    statsRange: '30',
+    tlStart: USAGE_SINCE, tlDays: Math.max(14, daysBetween(USAGE_SINCE, TODAY) + 1), schedView: 'timeline',
+    statsRange: 'since',
   };
 
   // ---------- helpers ----------
@@ -711,7 +685,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     roleEl.className = 'role' + (state.isAdmin ? ' admin' : '');
     $('me-avatar').src = state.myId ? `https://github.com/${encodeURIComponent(state.myId)}.png?size=64` : "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'/>";
     renderAccounts();
-    $('f-submit').disabled = !state.canWrite;
   }
   // ---------- GitHub Contents API ----------
   const repoUrl = () => `https://github.com/${state.repo}`;
@@ -893,11 +866,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     const liveUids = [];
     for (const snap of Object.values(state.live.now)) for (const x of (snap.gpus || [])) for (const u of (x.users || [])) liveUids.push(liveUid(u));
     for (const h of Object.values(state.live.hist)) for (const smp of (h || [])) for (const x of (smp.gpus || [])) for (const u of (x.users || [])) liveUids.push(liveUid(u));
-    state.colors = colorMap([...state.assignments.map(a => a.uid), ...reqs.filter(r => !r.isDefault).map(r => r.uid), ...liveUids]);   // one color per person, the same in every view
+    state.colors = colorMap([...state.assignments.map(a => a.uid), ...state.targets.map(x => x.uid), ...reqs.filter(r => !r.isDefault).map(r => r.uid), ...liveUids]);   // one color per person, the same in every view
     state.slots = {}; for (const g of state.gpus) Object.assign(state.slots, assignSlots(g, reqs));   // rid -> card indices
     renderGpus(reqs, profiles);
-    renderCalendar(reqs);
-    renderMine(reqs, profiles);
     renderTargets(profiles);
     renderSchedule(reqs, profiles);
     renderStats(reqs, profiles);
@@ -906,10 +877,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
   function renderGpus(reqs, profiles) {
     const grid = $('gpu-grid');
-    const sel = $('f-gpu');
-    const prevSel = sel.value;
-    sel.innerHTML = state.gpus.filter(g => g.status !== 'maintenance').map(g => `<option value="${esc(g.id)}">${esc(g.name)} — ${esc(g.cards)}× ${esc(g.model)}</option>`).join('');
-    if (prevSel && [...sel.options].some(o => o.value === prevSel)) sel.value = prevSel;
     if (!state.gpus.length) {
       grid.innerHTML = `<div class="empty" style="grid-column:1/-1">${esc(state.isAdmin ? t('noNodesAdmin') : t('noNodes'))}</div>`;
       $('gpu-summary').textContent = ''; $('q-today').hidden = state.queryDay === TODAY; $('cluster').hidden = true;
@@ -1008,6 +975,21 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       $(`${key}-list`).innerHTML = (sec.items || []).map(x => `<li>${esc(x)}</li>`).join('');
     }
   }
+  function renderTargetCalendar(rows, profiles) {
+    const [y, m] = state.tcalMonth.split('-').map(Number);
+    $('tcal-title').textContent = `${I18N.en.months[m - 1]} ${y}`;
+    const lead = (new Date(y, m - 1, 1).getDay() + 6) % 7;
+    const gridStart = iso(new Date(y, m - 1, 1 - lead));
+    let html = t('dow').map(d => `<div class="dow">${esc(d)}</div>`).join('');
+    for (let i = 0; i < 42; i++) {
+      const day = addDays(gridStart, i);
+      const chips = rows.filter(r => r.deadline === day).map(r => `<div class="chip" style="background:${state.colors[r.uid] || 'var(--s-other)'}" title="${esc(nameOf(profiles, r.uid))} · ${esc(r.venue || '')}${r.note ? ' · ' + esc(r.note) : ''}"><b>${esc(nameOf(profiles, r.uid).split(' ')[0])}</b>${r.venue ? ' · ' + esc(r.venue) : ''}</div>`).join('');
+      html += `<div class="day ${day.slice(0, 7) === state.tcalMonth ? '' : 'other'} ${day === TODAY ? 'today' : ''}"><span class="n">${parse(day).getDate()}</span>${chips}</div>`;
+    }
+    $('tcal-grid').innerHTML = html;
+  }
+  $('tcal-prev').addEventListener('click', () => { const [y, m] = state.tcalMonth.split('-').map(Number); state.tcalMonth = iso(new Date(y, m - 2, 1)).slice(0, 7); render(); });
+  $('tcal-next').addEventListener('click', () => { const [y, m] = state.tcalMonth.split('-').map(Number); state.tcalMonth = iso(new Date(y, m, 1)).slice(0, 7); render(); });
   function renderTargets(profiles) {
     const uids = [...new Set([...state.targets.map(x => x.uid), ...state.assignments.map(a => a.uid), ...(state.myId && state.canWrite ? [state.myId] : [])])];
     const rows = uids.map(uid => ({ uid, ...(state.targets.find(x => x.uid === uid) || { venue: '', deadline: '', note: '' }) }))
@@ -1035,6 +1017,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         <td>${canEdit ? `<button class="sm" data-act="edittarget" data-uid="${esc(r.uid)}">${esc(t('edit'))}</button>` : ''}</td>
       </tr>`;
     }).join('');
+    renderTargetCalendar(rows, profiles);
     $('targets-table').innerHTML = `<table class="table targets"><thead><tr><th>${esc(t('thMember'))}</th><th>${esc(t('thVenue'))}</th><th>${esc(t('thDeadline'))}</th><th>${esc(t('thDue'))}</th><th>${esc(t('thNote'))}</th><th></th></tr></thead><tbody>${html}</tbody></table>`;
   }
   function renderAssignments(profiles) {
@@ -1064,80 +1047,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       toast(on ? t('tShareOn') : t('tShareOff'));
     } catch (e) { toast(errMsg(e)); }
     render();
-  });
-
-  // ----- calendar range picker -----
-  function renderCalendar(reqs) {
-    const [y, m] = state.calMonth.split('-').map(Number);
-    $('cal-title').textContent = `${I18N.en.months[m - 1]} ${y}`;
-    const g = gpuById($('f-gpu').value);
-    const start = $('f-start').value, end = $('f-end').value;
-    const first = new Date(y, m - 1, 1);
-    const lead = (first.getDay() + 6) % 7;            // Monday-first
-    const gridStart = iso(new Date(y, m - 1, 1 - lead));
-    let html = t('dow').map(d => `<div class="dow">${esc(d)}</div>`).join('');
-    for (let i = 0; i < 42; i++) {
-      const day = addDays(gridStart, i);
-      const inMonth = day.slice(0, 7) === state.calMonth;
-      const past = day < TODAY;
-      const cls = ['day'];
-      if (!inMonth) cls.push('other');
-      if (past) cls.push('past');
-      if (day === TODAY) cls.push('today');
-      let freeTxt = '';
-      if (g) { const f = freeOn(g, day, reqs); freeTxt = `${f.free}${f.shareable ? `<em title="${esc(t('calShareable', f.shareable))}">+${f.shareable}</em>` : ''}`; if (f.free + f.shareable <= 0) cls.push('nofree'); }
-      if (start && end && day >= start && day <= end) cls.push(day === start || day === end ? 'edge' : 'in');
-      html += `<div class="${cls.join(' ')}" data-day="${day}" role="button" tabindex="${past ? -1 : 0}"><span class="n">${parse(day).getDate()}</span>${freeTxt !== '' ? `<span class="f">${freeTxt}</span>` : ''}</div>`;
-    }
-    $('cal-grid').innerHTML = html;
-    renderPicker(reqs);
-    const count = state.picked.size || 1;
-    $('range-days').textContent = start && end && end >= start ? t('rangeDays', daysBetween(start, end) + 1, count) : '';
-  }
-  // GPU picker: one button per card on the chosen node, status for the chosen date window
-  function renderPicker(reqs) {
-    const g = gpuById($('f-gpu').value);
-    const el = $('gpu-pick');
-    if (!g) { el.innerHTML = ''; $('pick-summary').textContent = ''; return; }
-    const start = $('f-start').value || TODAY, end = $('f-end').value || start;
-    const probe = { id: '__new', gpuId: g.id, start, end };
-    const busy = [];
-    for (const o of reqs) if (o.gpuId === g.id && o.status === 'approved' && overlaps(o, probe)) for (const i of (state.slots[o.id] || [])) (busy[i] = busy[i] || []).push({ start: o.start, end: o.end, share: !!o.share, uid: o.uid });
-    let html = '';
-    for (let i = 0; i < g.cards; i++) {
-      const ov = (busy[i] || []).filter(iv => overlaps(iv, probe));
-      const joinable = canJoin(busy[i] || [], probe);
-      const cls = !ov.length ? '' : (joinable ? 'share' : 'taken');
-      if (!joinable) state.picked.delete(i);
-      const who = ov.length ? `<small>${esc(t('pickWith', [...new Set(ov.map(o => (state.profileCache && state.profileCache[o.uid]) || o.uid))].join(', ')))}</small>` : '<small>&nbsp;</small>';
-      html += `<button type="button" class="${cls}" data-id="${i}" aria-pressed="${state.picked.has(i)}" ${joinable ? '' : 'disabled'}>GPU ${i}${who}</button>`;
-    }
-    el.innerHTML = html;
-    $('pick-summary').textContent = state.picked.size ? t('pickSummary', state.picked.size) : '';
-  }
-  $('gpu-pick').addEventListener('click', (ev) => {
-    const b = ev.target.closest('button[data-id]'); if (!b || b.disabled) return;
-    const i = Number(b.dataset.id);
-    if (state.picked.has(i)) state.picked.delete(i); else state.picked.add(i);
-    renderCalendar(allRequests());
-  });
-  function pickDay(day) {
-    if (day < TODAY) return;
-    const s = $('f-start'), e = $('f-end');
-    if (!state.picking || day < s.value) { s.value = day; e.value = day; state.picking = true; }
-    else { e.value = day; state.picking = false; }
-    renderCalendar(allRequests());
-  }
-  $('cal-grid').addEventListener('click', (ev) => { const el = ev.target.closest('.day[data-day]'); if (el) pickDay(el.dataset.day); });
-  $('cal-grid').addEventListener('keydown', (ev) => { const el = ev.target.closest('.day[data-day]'); if (el && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); pickDay(el.dataset.day); } });
-  const shiftMonth = (n) => { const [y, m] = state.calMonth.split('-').map(Number); const d = new Date(y, m - 1 + n, 1); state.calMonth = iso(d).slice(0, 7); renderCalendar(allRequests()); };
-  $('cal-prev').addEventListener('click', () => shiftMonth(-1));
-  $('cal-next').addEventListener('click', () => shiftMonth(1));
-  $('f-gpu').addEventListener('change', () => { state.picked.clear(); renderCalendar(allRequests()); });
-  for (const id of ['f-start', 'f-end']) $(id).addEventListener('change', () => {
-    if ($('f-end').value < $('f-start').value) $('f-end').value = $('f-start').value;
-    if ($('f-start').value) state.calMonth = $('f-start').value.slice(0, 7);
-    state.picking = false; renderCalendar(allRequests());
   });
 
   function reqCard(r, profiles, opts = {}) {
@@ -1185,13 +1094,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     $('sched-clear').hidden = !g;
     const nodes = g ? [g] : state.gpus;
     const approved = reqs.filter(r => r.status === 'approved' && (!g || r.gpuId === g.id));
-    $('sched-timeline').hidden = state.schedView !== 'timeline';
-    $('sched-list').hidden = state.schedView !== 'list';
-    $('tl-nav').hidden = state.schedView !== 'timeline';
 
-    // list
-    const upcoming = approved.filter(r => !r.isDefault && r.end >= TODAY).sort((a, b) => a.start.localeCompare(b.start) || a.gpuId.localeCompare(b.gpuId));
-    $('sched-list').innerHTML = upcoming.length ? upcoming.map(r => reqCard(r, profiles)).join('') : `<div class="empty">${esc(t('noScheduleList'))}</div>`;
 
     // timeline: from the agents' history when there is any (who was on each card each day), else from bookings
     const DW = 34;
@@ -1260,10 +1163,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       </div></div>
       ${legend || `<div class="nodata">${esc(liveBars ? t('noSchedule') : t('noAgentTimeline'))}</div>`}` : `<div class="empty">${esc(t('noNodes'))}</div>`;
   }
-  $('tl-nav').addEventListener('click', (ev) => { const b = ev.target.closest('[data-shift]'); if (!b) return; const n = Number(b.dataset.shift); state.tlStart = n === 0 ? addDays(TODAY, -29) : addDays(state.tlStart, n); render(); });
+  $('tl-nav').addEventListener('click', (ev) => { const b = ev.target.closest('[data-shift]'); if (!b) return; const n = Number(b.dataset.shift); state.tlStart = n === 0 ? USAGE_SINCE : addDays(state.tlStart, n); render(); });
 
   // ----- statistics -----
   function statsPeriod() {
+    if (state.statsRange === 'since') return { start: USAGE_SINCE, end: TODAY };
     if (state.statsRange === 'month') return { start: TODAY.slice(0, 7) + '-01', end: TODAY };
     return { start: addDays(TODAY, -(Number(state.statsRange) - 1)), end: TODAY };
   }
@@ -1450,39 +1354,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       <p class="hint">${esc(t('adminsHint'))}</p>`;
   }
 
-  // ---------- actions: write straight to bookings.json ----------
-  async function onSubmitRequest(ev) {
-    ev.preventDefault();
-    if (!state.canWrite) { toast(t('vSignIn')); return; }
-    const gpuId = $('f-gpu').value, start = $('f-start').value, end = $('f-end').value, purpose = $('f-purpose').value.trim();
-    const modelSize = $('f-model').value.trim(), vram = parseInt($('f-vram').value, 10);
-    const g = gpuById(gpuId);
-    if (!g) { toast(t('vPickNode')); return; }
-    const idx = [...state.picked];
-    if (!idx.length) { toast(t('vGpuIds')); return; }
-    const count = idx.length;
-    if (!idx.every(i => Number.isInteger(i) && i >= 0 && i < g.cards) || new Set(idx).size !== idx.length) { toast(t('vSlots', count, g.cards - 1)); return; }
-    if (!start || !end || end < start) { toast(t('vDates')); return; }
-    if (!modelSize) { toast(t('vModel')); $('f-model').focus(); return; }
-    if (!(vram >= 1)) { toast(t('vVram')); $('f-vram').focus(); return; }
-    if (!purpose) { toast(t('vPurpose')); return; }
-    const slots = idx.slice().sort((x, y) => x - y);
-    const btn = $('f-submit'); btn.disabled = true;
-    const item = { id: 'b_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), uid: state.myId, gpuId, count, start, end, purpose, modelSize, vramGb: vram, slots, share: $('f-share').checked, preempt: $('f-preempt').checked, createdAt: new Date().toISOString() };
-    try {
-      const ok = await writeBookings(list => {
-        // re-check against the freshest file so two people cannot double-book
-        state.requests = list.map(normalize);
-        state.slots = {}; for (const n of state.gpus) Object.assign(state.slots, assignSlots(n, allRequests()));
-        const free = freeCardsFor(g, item);
-        if (free.length < count) { toast(t('vNoRoom', free.length, g.name)); return false; }
-        const taken = slots.filter(i => !free.includes(i)); if (taken.length) { toast(t('vTaken', taken.join(','), free.join(','))); return false; }
-        list.unshift(item); return list;
-      }, `Book ${g.name} ×${count} ${start}→${end} (${state.myId})`);
-      if (ok) { $('f-purpose').value = ''; state.picked.clear(); $('f-model').value = ''; $('f-vram').value = ''; $('f-share').checked = false; $('f-preempt').checked = false; state.picking = false; toast(t('tSubmitted')); }
-    } catch (e) { toast(errMsg(e)); }
-    btn.disabled = false; render();
-  }
   function needsConfirm(key) {
     if (state.confirmKey === key) { state.confirmKey = null; return false; }
     state.confirmKey = key; render();
@@ -1529,8 +1400,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     return out;
   }
   document.querySelector('.tabs').addEventListener('click', (ev) => { const tab = ev.target.closest('[role=tab]'); if (!tab) return; state.adminTab = tab.dataset.tab; render(); });
-  $('req-form').addEventListener('submit', onSubmitRequest);
-  $('f-start').value = TODAY; $('f-end').value = TODAY;
   $('q-day').value = TODAY;
   $('q-day').addEventListener('change', () => { state.queryDay = $('q-day').value || TODAY; render(); });
   $('q-today').addEventListener('click', () => { state.queryDay = TODAY; $('q-day').value = TODAY; render(); });
