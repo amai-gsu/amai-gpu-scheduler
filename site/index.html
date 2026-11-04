@@ -367,11 +367,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
   <section class="panel" id="schedule-panel">
     <header>
-      <h2 id="sched-title" data-i18n="schedule">Usage since Nov 1</h2>
+      <h2 id="sched-title" data-i18n="schedule">Usage by month</h2>
       <div class="actions">
         <span class="count" id="sched-count"></span>
         <button class="sm" id="sched-clear" type="button" hidden data-i18n="showAllNodes">Show all nodes</button>
-        <div class="seg" id="tl-nav"><button type="button" data-shift="-7">‹</button><button type="button" data-shift="0" data-i18n="last30btn">Since Nov 1</button><button type="button" data-shift="7">›</button></div>
+        <div class="seg" id="tl-nav"><button type="button" data-shift="-7">‹</button><button type="button" data-shift="0" data-i18n="last30btn">This month</button><button type="button" data-shift="7">›</button></div>
         
       </div>
     </header>
@@ -456,7 +456,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       tagShare: 'shareable', tagPreempt: 'preemptible',
       submit: 'Book', tabAll: 'All bookings', tabGpus: 'Nodes', fGpuIds: 'Pick the cards you want for these dates', vGpuIds: 'Pick at least one card.', pickFree: 'free', pickShare: 'shareable with the holder', pickTaken: 'taken', pickWith: (n) => `with ${n}`, pickSummary: (n) => `${n} selected`,
       vNoRoom: (n, g) => `Only ${n} card${n === 1 ? '' : 's'} free on ${g} in that window. Pick other dates or fewer cards.`, vTaken: (taken, free) => `GPU ${taken} already booked in that window; free: ${free}.`,
-      schedule: 'Usage since Nov 1', last30btn: 'Since Nov 1', showAllNodes: 'Show all nodes', viewTimeline: 'Timeline', viewList: 'List',
+      schedule: 'Usage by month', last30btn: 'This month', showAllNodes: 'Show all nodes', viewTimeline: 'Timeline', viewList: 'List',
       calSelected: 'Selected range', calFull: 'No free cards', calHint: 'Numbers are free cards on that node; +n are cards someone is willing to share. Click a start day, then an end day.', sharedWith: (n) => `sharing with ${n}`, calShareable: (n) => `${n} card${n === 1 ? '' : 's'} shareable with the current holder`, shared: 'shared by two people',
       calNoNode: 'Pick a node to see its free cards per day.',
       rangeDays: (n, c) => `${n} day${n === 1 ? '' : 's'} × ${c} card${c === 1 ? '' : 's'} = ${n * c} card-days`,
@@ -551,7 +551,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     picking: false,                // true after the first click of a range
     tcalMonth: TODAY.slice(0, 7),
     picked: new Set(),             // GPU ids chosen in the booking form
-    tlStart: USAGE_SINCE, tlDays: Math.max(14, daysBetween(USAGE_SINCE, TODAY) + 1), schedView: 'timeline',
+    tlStart: TODAY.slice(0, 7) + '-01', tlDays: new Date(Number(TODAY.slice(0, 4)), Number(TODAY.slice(5, 7)), 0).getDate(), schedView: 'timeline',
     statsRange: 'since',
   };
 
@@ -1097,7 +1097,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 
     // timeline: from the agents' history when there is any (who was on each card each day), else from bookings
-    const DW = 34;
+    const DW = 32;
     let liveBars = null;
     if (Object.values(state.live.hist).some(h => h && h.length)) {
       liveBars = [];
@@ -1156,14 +1156,21 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     const legendIds = [...new Set(inWindow.map(r => r.uid))].sort();
     const legend = legendIds.length ? `<div class="legend"><span><i style="background:var(--muted);background-image:repeating-linear-gradient(135deg,transparent 0 3px,rgba(255,255,255,.35) 3px 5px)"></i>${esc(t('tagShare'))} / ${esc(t('tagPreempt'))}</span>${legendIds.map(u => `<span><i style="background:${colors[u]}"></i>${esc(nameOf(profiles, u))}${u === state.myId ? ` (${esc(t('you'))})` : ''}</span>`).join('')}</div>` : '';
     $('sched-timeline').innerHTML = nodes.length ? `
-      <div class="hint mono">${esc(fmtShort(wStart))} → ${esc(fmtShort(wEnd))}</div>
+      <div class="hint mono">${esc(I18N.en.months[parse(wStart).getMonth()])} ${parse(wStart).getFullYear()}</div>
       <div class="tl-wrap"><div class="tl" style="--dw:${DW}px;width:${150 + state.tlDays * DW}px">
         <div class="names">${namesCol}</div>
         <div class="track"><div class="days">${days}</div>${rows}${todayLine}</div>
       </div></div>
       ${legend || `<div class="nodata">${esc(liveBars ? t('noSchedule') : t('noAgentTimeline'))}</div>`}` : `<div class="empty">${esc(t('noNodes'))}</div>`;
   }
-  $('tl-nav').addEventListener('click', (ev) => { const b = ev.target.closest('[data-shift]'); if (!b) return; const n = Number(b.dataset.shift); state.tlStart = n === 0 ? USAGE_SINCE : addDays(state.tlStart, n); render(); });
+  $('tl-nav').addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-shift]'); if (!b) return;
+    const n = Number(b.dataset.shift);
+    const [y, m] = (n === 0 ? TODAY : state.tlStart).slice(0, 7).split('-').map(Number);
+    const first = new Date(y, m - 1 + (n === 0 ? 0 : Math.sign(n)), 1);
+    state.tlStart = iso(first); state.tlDays = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+    render();
+  });
 
   // ----- statistics -----
   function statsPeriod() {
