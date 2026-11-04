@@ -25,6 +25,10 @@ the moment you submit it, and the page refuses windows where the cards are alrea
 You need **Write** access to this repository to book. Ask a lab admin to add you under
 Settings → Collaborators.
 
+**Policy, penalties and the chat button** come from [`policy.json`](policy.json): edit the lists
+there. The lab talks in a WeChat group; drop the group QR code at `site/wechat-qr.png` (group QR
+codes expire after 7 days, so replace it when needed) and it shows under the 💬 button.
+
 ## For admins
 
 - **Add a member**: Settings → Collaborators and teams → Add people → role **Write**.

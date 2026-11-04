@@ -75,6 +75,11 @@ p { margin: 0; }
 .role { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
 .role.admin { background: var(--accent-soft); color: var(--accent); }
 
+.rules { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 720px) { .rules { grid-template-columns: minmax(0, 1fr); } }
+.rule ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.rule#rule-penalty header { border-left: 3px solid var(--bad); }
+.rule#rule-policy header { border-left: 3px solid var(--accent); }
 .notice { padding: 10px 14px; border-radius: var(--radius); background: var(--warn-soft); color: var(--fg); border-left: 3px solid var(--warn); }
 .notice.bad { background: var(--bad-soft); border-left-color: var(--bad); }
 
@@ -136,7 +141,9 @@ button.link { border: none; background: transparent; color: var(--muted); paddin
 a.btn { display: inline-block; border: 1px solid var(--line); background: var(--surface); padding: 3px 9px; font-size: 12px; border-radius: 6px; color: var(--fg); text-decoration: none; }
 a.btn:hover { background: var(--surface-2); }
 a.btn.ok { border-color: var(--ok); color: var(--ok); }
-a.btn.chat-link { padding: 6px 12px; font-size: 13px; }
+button.chat-link { padding: 6px 12px; font-size: 13px; }
+.chat-box { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.chat-box img { width: 160px; height: 160px; border-radius: 6px; border: 1px solid var(--line); background: #fff; }
 button.link:hover { color: var(--fg); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
@@ -281,7 +288,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       <h1 data-i18n="title">Lab GPU Scheduler</h1>
     </div>
     <div class="right">
-      <a class="btn chat-link" id="chat-link" href="#" target="_blank" rel="noopener" hidden>💬 Lab chat ↗</a>
+      <button type="button" class="btn chat-link" id="chat-link" hidden>💬 Lab chat</button>
       <div class="me" id="me">
         <img id="me-avatar" alt="" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'/>">
         <div class="who">
@@ -293,6 +300,14 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   </div>
 
   <div class="notice" id="notice" hidden></div>
+  <div class="panel" id="chat-panel" hidden>
+    <header><h2 id="chat-title">Lab chat</h2><button class="link" id="chat-close" type="button">✕</button></header>
+    <div class="body"><div class="chat-box"><img id="chat-qr" alt="" hidden><p id="chat-note"></p></div></div>
+  </div>
+  <div class="rules" id="rules" hidden>
+    <section class="panel rule" id="rule-policy"><header><h2 id="policy-title">GPU policy</h2></header><div class="body"><ol id="policy-list"></ol></div></section>
+    <section class="panel rule" id="rule-penalty"><header><h2 id="penalty-title">Penalties</h2></header><div class="body"><ol id="penalty-list"></ol></div></section>
+  </div>
   <div class="panel" id="signin-panel" hidden>
     <header><h2 data-i18n="signInTitle">Sign in with a GitHub token</h2><button class="link" id="signin-close" type="button">✕</button></header>
     <div class="body">
@@ -423,7 +438,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 (() => {
   'use strict';
   const REPO = 'amai-gsu/amai-gpu-scheduler';   // the repository that holds bookings.json and nodes.json
-  const CHAT_URL = '';                          // the lab's chat (Slack / Discord / WeChat invite); empty hides the button
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -533,7 +547,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
   const state = {
     myId: null, isAdmin: false, canWrite: false, token: null, repo: REPO, generatedAt: '',
-    gpus: [], requests: [], sha: null, nodesSha: null, members: {}, assignments: [],
+    gpus: [], requests: [], sha: null, nodesSha: null, members: {}, assignments: [], rules: null,
     adminTab: 'all', confirmKey: null,
     queryDay: TODAY, filterGpu: null, colors: {},
     noticeKey: null, noticeKind: '', booted: false,
@@ -696,6 +710,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     const [b, n, m, a] = await Promise.all([readFile('bookings.json'), readFile('nodes.json'), readFile('members.json').catch(() => ({ data: { names: {} } })), readFile('assignments.json').catch(() => ({ data: { assignments: [] } }))]);
     state.members = (m.data && m.data.names) || {};
     state.assignments = (a.data && a.data.assignments) || [];
+    try { state.rules = (await readFile('policy.json')).data; } catch { state.rules = null; }
+    renderRules();
     state.sha = b.sha; state.requests = (b.data.bookings || []).map(normalize);
     state.nodesSha = n.sha; state.gpus = (n.data || []).slice().sort((a, c) => a.name.localeCompare(c.name));
     state.generatedAt = new Date().toISOString();
@@ -876,6 +892,26 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     }
   }
 
+  function renderRules() {
+    const r = state.rules; const box = $('rules');
+    const chat = r && r.chat;
+    $('chat-link').hidden = !chat;
+    if (chat) {
+      $('chat-link').textContent = `💬 ${chat.label || 'Lab chat'}`;
+      $('chat-title').textContent = chat.label || 'Lab chat';
+      $('chat-note').textContent = chat.note || '';
+      const img = $('chat-qr');
+      if (chat.qr) { img.hidden = false; img.src = chat.qr; img.onerror = () => { img.hidden = true; }; } else img.hidden = true;
+    }
+    box.hidden = !r || !(r.policy || r.penalty);
+    if (box.hidden) return;
+    for (const key of ['policy', 'penalty']) {
+      const sec = r[key] || {};
+      $(`rule-${key}`).hidden = !sec.items || !sec.items.length;
+      $(`${key}-title`).textContent = sec.title || (key === 'policy' ? 'GPU policy' : 'Penalties');
+      $(`${key}-list`).innerHTML = (sec.items || []).map(x => `<li>${esc(x)}</li>`).join('');
+    }
+  }
   function renderAssignments(profiles) {
     const panel = $('assign-panel');
     panel.hidden = !state.assignments.length;
@@ -1303,6 +1339,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     $('signin-steps').innerHTML = t('signInSteps', tokenUrl(), state.repo).map(x => `<li>${x}</li>`).join('');
     $('name-input').value = ''; $('signin-panel').hidden = false; $('token-input').focus();
   }
+  $('chat-link').addEventListener('click', () => { $('chat-panel').hidden = !$('chat-panel').hidden; });
+  $('chat-close').addEventListener('click', () => { $('chat-panel').hidden = true; });
   $('signin-btn').addEventListener('click', () => openSignIn());
   $('signout-btn').addEventListener('click', () => signOut());
   $('acct-switch').addEventListener('change', (ev) => { const v = ev.target.value; if (v === '__add') { renderAccounts(); openSignIn(); } else switchTo(v); });
@@ -1325,7 +1363,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   // ---------- boot ----------
   (async () => {
     applyStatic();
-    if (CHAT_URL) { $('chat-link').href = CHAT_URL; $('chat-link').hidden = false; }
     render();
     const accounts = loadAccounts();
     let current = ''; try { current = localStorage.getItem('gpu-current') || ''; } catch {}
