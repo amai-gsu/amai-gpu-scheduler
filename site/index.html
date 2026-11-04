@@ -90,6 +90,7 @@ p { margin: 0; }
 .cards { display: flex; flex-wrap: wrap; gap: 4px; }
 .cards i { display: block; width: 22px; height: 22px; border-radius: 4px; background: var(--surface-2); border: 1px dashed var(--line); box-sizing: border-box; }
 .cards i.held { border: none; }
+.cards i.default { border: 2px solid var(--line); background: transparent; }
 .cards i.over { border: 2px solid var(--warn); background: var(--warn-soft); }
 .gpu.maintenance .cards i { background: repeating-linear-gradient(45deg, var(--surface-2) 0 4px, var(--bg) 4px 8px); border-style: solid; }
 .cluster { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
@@ -313,6 +314,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     <div class="cluster" id="cluster" hidden></div>
     <div style="height:12px"></div>
     <div class="gpu-grid" id="gpu-grid"></div>
+    <div style="height:14px"></div>
+    <div class="panel" id="assign-panel" hidden>
+      <header><h2 data-i18n="assignTitle">Default assignment</h2><span class="hint" data-i18n="assignHint">Who a card belongs to when nobody has booked it. Bookings take priority. Edit assignments.json in the repository to change it.</span></header>
+      <div class="body"><div class="table-wrap" id="assign-table"></div></div>
+    </div>
   </section>
 
   <section class="panel" id="schedule-panel">
@@ -428,7 +434,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     en: {
       title: 'Lab GPU Scheduler', identifying: 'Identifying you…', roleGuest: 'Guest', roleMember: 'Member', roleAdmin: 'Admin',
       nodes: 'GPU nodes', queryDate: 'Date', backToToday: 'Back to today',
-      nodesHint: 'Each square is one card, colored by who holds it. Click a node to filter the timeline below; change the date to see any day.',
+      nodesHint: 'Each square is one card, colored by who holds it; an outlined square is free but has a default owner. Click a node to filter the timeline below; change the date to see any day.',
+      assignTitle: 'Default assignment', assignHint: 'Who a card belongs to when nobody has booked it. Bookings take priority. Edit assignments.json in the repository to change it.', thOwner: 'Default owner', thCards: 'Cards', defaultOwner: (n) => `default: ${n}`,
       clusterTitle: 'Whole cluster', freeCards: (n) => `${n} free`, maintCards: (n) => `${n} in maintenance`, overAlloc: 'over-allocated',
       myRequests: 'My bookings', fNode: 'Node', fStart: 'Start', fEnd: 'End',
       fPurpose: 'What for (project or deadline)',
@@ -519,7 +526,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
   const state = {
     myId: null, isAdmin: false, canWrite: false, token: null, repo: REPO, generatedAt: '',
-    gpus: [], requests: [], sha: null, nodesSha: null, members: {},
+    gpus: [], requests: [], sha: null, nodesSha: null, members: {}, assignments: [],
     adminTab: 'all', confirmKey: null,
     queryDay: TODAY, filterGpu: null, colors: {},
     noticeKey: null, noticeKind: '', booted: false,
@@ -670,8 +677,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     return { sha: f.sha, data: JSON.parse(b64dec(f.content)) };
   }
   async function loadAll() {
-    const [b, n, m] = await Promise.all([readFile('bookings.json'), readFile('nodes.json'), readFile('members.json').catch(() => ({ data: { names: {} } }))]);
+    const [b, n, m, a] = await Promise.all([readFile('bookings.json'), readFile('nodes.json'), readFile('members.json').catch(() => ({ data: { names: {} } })), readFile('assignments.json').catch(() => ({ data: { assignments: [] } }))]);
     state.members = (m.data && m.data.names) || {};
+    state.assignments = (a.data && a.data.assignments) || [];
     state.sha = b.sha; state.requests = (b.data.bookings || []).map(normalize);
     state.nodesSha = n.sha; state.gpus = (n.data || []).slice().sort((a, c) => a.name.localeCompare(c.name));
     state.generatedAt = new Date().toISOString();
@@ -760,9 +768,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   async function render() {
     const seq = ++renderSeq;
     const reqs = allRequests();
-    const profiles = await names([...reqs.map(r => r.uid), ...reqs.map(r => r.decision && r.decision.decidedBy)]);
+    const profiles = await names([...reqs.map(r => r.uid), ...reqs.map(r => r.decision && r.decision.decidedBy), ...state.assignments.map(a => a.uid)]);
     if (seq !== renderSeq) return;
-    state.colors = colorMap(reqs.map(r => r.uid));   // one color per person, the same in every view
+    state.colors = colorMap([...reqs.map(r => r.uid), ...state.assignments.map(a => a.uid)]);   // one color per person, the same in every view
     state.slots = {}; for (const g of state.gpus) Object.assign(state.slots, assignSlots(g, reqs));   // rid -> card indices
     renderGpus(reqs, profiles);
     renderCalendar(reqs);
@@ -799,7 +807,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       let squares = '';
       for (let i = 0; i < Math.max(g.cards, by.length); i++) {
         const h = by[i] || [];
-        if (!h.length) squares += `<i title="GPU ${i} · ${esc(t('free', 1))}"></i>`;
+        const def = state.assignments.find(a => a.gpuId === g.id && (a.slots || []).includes(i));
+        if (!h.length) squares += def ? `<i class="default" style="border-color:${colors[def.uid]}" title="GPU ${i} · ${esc(t('free', 1))} · ${esc(t('defaultOwner', nameOf(profiles, def.uid)))}"></i>` : `<i title="GPU ${i} · ${esc(t('free', 1))}"></i>`;
         else if (i >= g.cards) squares += `<i class="over" title="GPU ${i} · ${esc(h.map(r => nameOf(profiles, r.uid)).join(' + '))} · ${esc(t('overAlloc'))}"></i>`;
         else {
           const bg = h.length === 1 ? `background:${colors[h[0].uid]}` : `background:linear-gradient(135deg, ${colors[h[0].uid]} 50%, ${colors[h[1].uid]} 50%)`;
@@ -820,6 +829,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       </div>`;
     }).join('');
     $('gpu-summary').textContent = t('summary', state.gpus.length, usedCards, totalCards, dayLabel);
+    renderAssignments(profiles);
     $('q-today').hidden = day === TODAY;
 
     // cluster-wide stacked bar: one segment per person, then free, then maintenance
@@ -837,6 +847,23 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         <div class="stack">${users.map(([u, n]) => seg(Math.min(n, totalCards), `background:${colors[u]}`, `${nameOf(profiles, u)} ×${realCount[u] || 0}`)).join('')}${seg(free, '', t('freeCards', free)).replace('<i ', '<i class="free" ')}${seg(maintCards, '', t('maintCards', maintCards)).replace('<i ', '<i class="maint" ')}</div>
         <div class="legend">${users.map(([u, n]) => `<span><i style="background:${colors[u]}"></i>${esc(nameOf(profiles, u))} ×${realCount[u] || 0}</span>`).join('')}<span><i style="background:var(--surface-2);border:1px dashed var(--line)"></i>${esc(t('freeCards', free))}</span>${maintCards ? `<span><i class="maint" style="background:repeating-linear-gradient(45deg,var(--surface-2) 0 3px,var(--bg) 3px 6px)"></i>${esc(t('maintCards', maintCards))}</span>` : ''}</div>`;
     }
+  }
+
+  function renderAssignments(profiles) {
+    const panel = $('assign-panel');
+    panel.hidden = !state.assignments.length;
+    if (panel.hidden) return;
+    const rows = state.gpus.map(g => {
+      const mine = state.assignments.filter(a => a.gpuId === g.id);
+      if (!mine.length) return '';
+      return mine.map((a, k) => `<tr>
+        ${k === 0 ? `<td rowspan="${mine.length}"><b>${esc(g.name)}</b><div class="hint mono">${esc(g.cards)}× ${esc(g.model)}</div></td>` : ''}
+        <td class="mono">${esc((a.slots || []).map(i => 'GPU ' + i).join(', '))}</td>
+        <td><span class="person"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${state.colors[a.uid]};margin-right:6px"></i>${esc(nameOf(profiles, a.uid))}</span></td>
+        <td class="mono">${(a.slots || []).length}</td>
+      </tr>`).join('');
+    }).join('');
+    $('assign-table').innerHTML = `<table class="table"><thead><tr><th>${esc(t('thNode'))}</th><th>GPU</th><th>${esc(t('thOwner'))}</th><th>${esc(t('thCards'))}</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
 
   // ----- calendar range picker -----

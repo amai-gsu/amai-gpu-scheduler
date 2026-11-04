@@ -29,6 +29,8 @@ Settings → Collaborators.
 - **Add a member**: Settings → Collaborators and teams → Add people → role **Write**.
 - **Cancel someone's booking**: sign in as a repository Maintainer/Admin; the **All bookings** tab
   shows a *Cancel booking* button.
+- **Default assignment** (who owns a card when nobody has booked it): edit
+  [`assignments.json`](assignments.json); each row is `uid`, `gpuId`, `slots`. Bookings always win.
 - **Add or change nodes**: edit [`nodes.json`](nodes.json) and commit. Fields: `id`, `name`,
   `model`, `cards`, `memoryGb`, `status` (`available` or `maintenance`), `note`.
 - **Fill in people's names**: edit [`members.json`](members.json), `"github-login": "Real Name"`.

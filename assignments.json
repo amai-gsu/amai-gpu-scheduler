@@ -1,0 +1,9 @@
+{
+  "assignments": [
+    { "uid": "prehoke",        "gpuId": "ada6000", "slots": [0] },
+    { "uid": "xiaolong-shawn", "gpuId": "ada6000", "slots": [1] },
+    { "uid": "WeiHu9",         "gpuId": "ada6000", "slots": [2] },
+    { "uid": "hrchai",         "gpuId": "lab2",    "slots": [0, 1] },
+    { "uid": "arrdel",         "gpuId": "lab2",    "slots": [2, 3] }
+  ]
+}
