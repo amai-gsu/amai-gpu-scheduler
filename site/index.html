@@ -136,6 +136,7 @@ button.link { border: none; background: transparent; color: var(--muted); paddin
 a.btn { display: inline-block; border: 1px solid var(--line); background: var(--surface); padding: 3px 9px; font-size: 12px; border-radius: 6px; color: var(--fg); text-decoration: none; }
 a.btn:hover { background: var(--surface-2); }
 a.btn.ok { border-color: var(--ok); color: var(--ok); }
+a.btn.chat-link { padding: 6px 12px; font-size: 13px; }
 button.link:hover { color: var(--fg); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
@@ -277,6 +278,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       <h1 data-i18n="title">Lab GPU Scheduler</h1>
     </div>
     <div class="right">
+      <a class="btn chat-link" id="chat-link" href="#" target="_blank" rel="noopener" hidden>💬 Lab chat ↗</a>
       <div class="me" id="me">
         <img id="me-avatar" alt="" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'/>">
         <div class="who">
@@ -418,6 +420,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 (() => {
   'use strict';
   const REPO = 'amai-gsu/amai-gpu-scheduler';   // the repository that holds bookings.json and nodes.json
+  const CHAT_URL = '';                          // the lab's chat (Slack / Discord / WeChat invite); empty hides the button
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -1286,6 +1289,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   // ---------- boot ----------
   (async () => {
     applyStatic();
+    if (CHAT_URL) { $('chat-link').href = CHAT_URL; $('chat-link').hidden = false; }
     render();
     const accounts = loadAccounts();
     let current = ''; try { current = localStorage.getItem('gpu-current') || ''; } catch {}
