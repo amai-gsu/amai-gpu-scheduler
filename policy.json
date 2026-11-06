@@ -12,8 +12,7 @@
     "title": "Penalties",
     "items": [
       "A job running on a card you neither own nor were given may be killed without notice.",
-      "Cards held idle for more than 24 hours: the processes are killed by an admin.",
-      "Repeated violations: access to shared cards suspended for one week."
+      "Using someone else's GPU without their consent: you lose access to all GPUs, including your own, for the same length of time."
     ]
   },
   "chat": {
