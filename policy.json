@@ -17,8 +17,8 @@
   },
   "chat": {
     "label": "WeChat group",
-    "note": "",
+    "note": "Most owners are glad to share if you ask. Post in the WeChat group or message the card owner directly: say how many cards, for how long, and why, and wait for a yes before you start. Planning for a deadline? Give at least a week's notice and loop in Prof. Wang. A quick message now saves a conflict later.",
     "qr": "wechat-qr.png",
-    "emphasis": "Communicate first to get more GPU resources."
+    "emphasis": "Need more GPUs? Talk to each other first."
   }
 }

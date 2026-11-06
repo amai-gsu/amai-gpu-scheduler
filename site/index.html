@@ -87,11 +87,13 @@ p { margin: 0; }
 .rule#rule-policy header h2 { color: var(--ok); }
 .rule#rule-penalty { border-top-color: var(--bad); }
 .rule#rule-penalty header h2 { color: var(--bad); }
-#chat-panel { border-left: 3px solid var(--accent); }
+#chat-panel { border-left: 4px solid var(--bad); }
 #chat-panel header { display: none; }
-#chat-panel > .body { padding: 12px 16px; }
-#chat-panel .chat-box .emphasis { font-size: 15px; font-weight: 600; color: var(--fg); margin: 0; }
-#chat-panel .chat-box .emphasis::before { content: "💬 "; }
+#chat-panel > .body { padding: 16px 20px; }
+#chat-panel .announce { display: flex; flex-direction: column; gap: 6px; max-width: 80ch; }
+#chat-panel .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--bad); }
+#chat-panel .chat-box .emphasis { font-size: 22px; line-height: 1.25; font-weight: 700; color: var(--bad); margin: 0; text-wrap: balance; }
+#chat-panel #chat-note { font-size: 14px; line-height: 1.55; color: var(--fg); }
 .notice { padding: 10px 14px; border-radius: var(--radius); background: var(--warn-soft); color: var(--fg); border-left: 3px solid var(--warn); }
 .notice.bad { background: var(--bad-soft); border-left-color: var(--bad); }
 
@@ -337,7 +339,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   <div class="notice" id="notice" hidden></div>
   <div class="panel" id="chat-panel" hidden>
     <header><h2 id="chat-title">Lab chat</h2></header>
-    <div class="body"><div class="chat-box"><img id="chat-qr" alt="" hidden><div><p id="chat-emphasis" class="emphasis"></p><p id="chat-note"></p></div></div></div>
+    <div class="body"><div class="chat-box"><img id="chat-qr" alt="" hidden><div class="announce"><p class="eyebrow">📢 Announcement</p><p id="chat-emphasis" class="emphasis"></p><p id="chat-note"></p></div></div></div>
   </div>
   <div class="rules" id="rules" hidden>
     <section class="panel rule" id="rule-policy"><header><h2 id="policy-title">GPU policy</h2></header><div class="body"><ol id="policy-list"></ol></div></section>
