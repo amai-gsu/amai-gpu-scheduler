@@ -3,10 +3,9 @@
     "title": "GPU policy",
     "items": [
       "Every card has a standing owner (see Card assignment). Use your own cards freely.",
-      "To use someone else's card, the owner must have switched on Can share, and you agree the details with them in the WeChat group first.",
-      "Run only on cards you own or were given: set CUDA_VISIBLE_DEVICES accordingly.",
-      "Stop and free the memory as soon as a run is done; do not park idle processes on a card.",
-      "Near a deadline, say so in the group (and fill in your Targets row); owners are encouraged to share."
+      "To use someone else's card, you need the owner's consent first.",
+      "When your project ends, you are responsible for backing up and cleaning up your own data.",
+      "If a deadline is near and you need more resources, talk to the resource owner at least one week in advance and get Prof. Wang's approval before using them."
     ]
   },
   "penalty": {
