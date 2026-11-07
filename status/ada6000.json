@@ -1,1 +1,1 @@
-{"node":"ada6000","at":"2026-11-07T13:00:01+00:00","gpus":[{"i":0,"memUsed":2,"memTotal":49140,"util":0,"procs":[],"users":[]},{"i":1,"memUsed":2,"memTotal":49140,"util":0,"procs":[],"users":[]},{"i":2,"memUsed":2,"memTotal":49140,"util":0,"procs":[],"users":[]}]}
+{"node":"ada6000","at":"2026-11-07T13:30:01+00:00","gpus":[{"i":0,"memUsed":2,"memTotal":49140,"util":0,"procs":[],"users":[]},{"i":1,"memUsed":2,"memTotal":49140,"util":0,"procs":[],"users":[]},{"i":2,"memUsed":2,"memTotal":49140,"util":0,"procs":[],"users":[]}]}
