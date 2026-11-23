@@ -145,6 +145,7 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color:
 label.inline { flex-direction: row; align-items: center; gap: 6px; }
 label.inline input, label.inline select { width: auto; padding: 4px 6px; }
 #acct-switch { width: auto; padding: 2px 6px; font-size: 12px; }
+button.signin-cta { padding: 6px 14px; font-size: 13px; font-weight: 600; }
 input, select, textarea, button { font: inherit; color: inherit; }
 input, select, textarea { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
 textarea { resize: vertical; min-height: 60px; }
@@ -519,7 +520,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       cancel: 'Cancel booking', confirmCancel: 'Confirm cancel?', tCancelled: 'Booking cancelled',
       editNodes: 'Edit nodes.json', editNodesHint: 'Nodes live in nodes.json in the repository; edit and commit it there.',
       nNoDb: 'Could not reach the shared data; the page is read-only for now. Sign in to claude.ai and reload.',
-      nSignIn: 'Sign in with a GitHub token (top right) to book cards. Without signing in you can only view.',
+      notSignedIn: 'Not signed in',
+      nSignIn: 'Lab members: click Sign in (top right) with your GitHub token to edit your Targets row and your card sharing. Without signing in you can only view.',
       nViewOnly: 'Your GitHub account cannot write to this repository. Ask an admin to add you as a collaborator with Write access.',
       nRevoked: 'Your access changed. Reload the page.',
       stats: 'Usage statistics', sinceNov: 'Since Nov 1', last30: 'Last 30 days', last90: 'Last 90 days', thisMonth: 'This month',
@@ -703,6 +705,12 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   const b64enc = (str) => btoa(String.fromCharCode(...new TextEncoder().encode(str)));
   const b64dec = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\n/g, '')), c => c.charCodeAt(0)));
   async function readFile(path) {
+    if (!state.token) {
+      // Signed out: read from raw.githubusercontent.com (no API rate limit). The minute stamp keeps the CDN copy fresh.
+      const res = await fetch(`https://raw.githubusercontent.com/${state.repo}/main/${path}?v=${Math.floor(Date.now() / 60000)}`, { cache: 'no-store' });
+      if (!res.ok) { const err = new Error(`${res.status}`); err.status = res.status; throw err; }
+      return { sha: undefined, data: await res.json() };
+    }
     const f = await gh(`/repos/${state.repo}/contents/${path}?ref=main`);
     return { sha: f.sha, data: JSON.parse(b64dec(f.content)) };
   }
@@ -857,6 +865,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     sel.innerHTML = list.map(a => `<option value="${esc(a.login)}" ${a.login === state.myId ? 'selected' : ''}>${esc(state.members[a.login] || a.login)}</option>`).join('') + `<option value="__add">${esc(t('addAccount'))}</option>`;
     $('signout-btn').hidden = !state.myId;
     $('signin-btn').textContent = state.myId ? t('addAccount') : t('signIn');
+    $('signin-btn').className = state.myId ? 'link' : 'primary signin-cta';
+    $('me-role').hidden = !state.myId;
   }
 
   // ---------- render ----------
