@@ -229,6 +229,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .check { flex-direction: row; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--fg); cursor: pointer; }
 .check input { width: auto; margin-top: 3px; }
 .pill.tag { background: var(--accent-soft); color: var(--accent); }
+.tl .bar.seg { border-radius: 2px; padding: 0 4px; box-shadow: none; border-right: 1px solid var(--surface); }
 .tl .bar.top { height: 9px; line-height: 9px; font-size: 9px; top: 3px; }
 .tl .bar.bottom { height: 9px; line-height: 9px; font-size: 9px; top: 14px; }
 .tl .bar.soft { background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(255,255,255,.28) 6px 9px); }
@@ -506,7 +507,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       nameLabel: 'Your real name (shown on your bookings so everyone knows who holds the cards)', vName: 'Please enter your real name.',
       targets: 'Targets', targetsHint: 'What everyone is working toward. Edit your own row; admins can edit any.', thMember: 'Member', thVenue: 'Target venue', thDeadline: 'Deadline', thDue: 'Time left', thNote: 'Note', targetNotePh: 'e.g. main experiments, then ablations', edit: 'Edit', save: 'Save', cancelEdit: 'Cancel', tTargetSaved: 'Target saved',
       daysLeft: (n) => `${n} day${n === 1 ? '' : 's'} left`, dueToday: 'due today', daysAgo: (n) => `${n} day${n === 1 ? '' : 's'} ago`,
-      unknownUser: 'unknown user', ofDay: 'of the day', idle: 'idle', liveAt: (tm) => `live · ${tm}`, staleSince: (tm) => `no report since ${tm}`, noAgent: 'No live data yet: install the node agent (see agent/README.md).', noAgentTimeline: 'The timeline fills in once the node agents report usage.', busyFrac: (p) => `busy ${p}% of the day`, liveDays: (n) => `${n} day${n === 1 ? '' : 's'} of data`, activeUsers: 'People seen', samples: 'Samples', noStatsLive: 'No samples in this period yet.', noSample: (d) => `${d}: no samples`,
+      unknownUser: 'unknown user', hoursN: (h) => `${h} h`, segHint: 'Bars are drawn to the half hour; hover for exact times.', ofDay: 'of the day', idle: 'idle', liveAt: (tm) => `live · ${tm}`, staleSince: (tm) => `no report since ${tm}`, noAgent: 'No live data yet: install the node agent (see agent/README.md).', noAgentTimeline: 'The timeline fills in once the node agents report usage.', busyFrac: (p) => `busy ${p}% of the day`, liveDays: (n) => `${n} day${n === 1 ? '' : 's'} of data`, activeUsers: 'People seen', samples: 'Samples', noStatsLive: 'No samples in this period yet.', noSample: (d) => `${d}: no samples`,
       statsHintLive: 'From the node agents’ 30-minute samples. A card counts as busy when it holds more than 1 GB or shows ≥5% utilisation. Card-days = busy samples ÷ 48.',
       roleViewer: 'Viewer', signIn: 'Sign in', signOut: 'Sign out', addAccount: 'Add account…', signInTitle: 'Sign in with a GitHub token (one time)', tokenLabel: 'Token', tokenSave: 'Sign in',
       tokenHint: 'Stored only in this browser. It is sent to api.github.com and nowhere else.',
@@ -749,7 +750,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     }
     const dm = dayModel(g.id, day);
     if (!dm.length) return null;
-    dm.forEach((c, i) => { if (c && c.busy && c.top) by[i] = [{ uid: c.top, live: true, frac: c.busy / c.n, mem: Math.round(c.mem / c.n), util: Math.round(c.util / c.n) }]; });
+    dm.forEach((c, i) => { if (c && c.busy) { const us = Object.entries(c.users).sort((a2, b2) => b2[1] - a2[1]); by[i] = (us.length ? us : [['~?', c.busy]]).slice(0, 2).map(([uid, k]) => ({ uid, live: true, hours: k / 2, frac: c.busy / c.n, mem: Math.round(c.mem / c.n), util: Math.round(c.util / c.n) })); } });
     return by;
   }
   async function loadAll() {
@@ -918,7 +919,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         else if (i >= g.cards) squares += `<i class="over" title="GPU ${i} · ${esc(h.map(r => nameOf(profiles, r.uid)).join(' + '))} · ${esc(t('overAlloc'))}"></i>`;
         else {
           const bg = h.length === 1 ? `background:${colors[h[0].uid]}` : `background:linear-gradient(135deg, ${colors[h[0].uid]} 50%, ${colors[h[1].uid]} 50%)`;
-          const who = h.map(r => r.live ? `${nameOf(profiles, r.uid)}${r.mem != null ? ` · ${(r.mem / 1024).toFixed(1)}/${(r.tot ? r.tot / 1024 : (g.memoryGb || 0)).toFixed(0)} GB · ${r.util ?? 0}%` : ''}${r.frac != null ? ` · ${Math.round(r.frac * 100)}% ${t('ofDay')}` : ''}` : `${nameOf(profiles, r.uid)} · ${r.start} → ${r.end}`).join('\n');
+          const who = h.map(r => r.live ? `${nameOf(profiles, r.uid)}${r.hours != null ? ` · ${r.hours}h` : (r.mem != null ? ` · ${(r.mem / 1024).toFixed(1)}/${(r.tot ? r.tot / 1024 : (g.memoryGb || 0)).toFixed(0)} GB · ${r.util ?? 0}%` : '')}` : `${nameOf(profiles, r.uid)} · ${r.start} → ${r.end}`).join('\n');
           squares += `<i class="held" style="${bg}" title="GPU ${i}${h.length > 1 ? ' · ' + esc(t('shared')) : (h[0].share ? ' · ' + esc(t('tagShare')) : '')}&#10;${esc(who)}"></i>`;
         }
       }
@@ -930,7 +931,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
         liveStamp = `<div class="hint ${age > 90 ? 'stale' : ''}">${esc(age > 90 ? t('staleSince', fmtTime(snap.at)) : t('liveAt', fmtTime(snap.at)))}</div>`;
         who = (snap.gpus || []).map(x => { const pct = x.memTotal ? Math.round(x.memUsed / x.memTotal * 100) : 0; const u = (x.users || []).map(liveUid); return `<div class="livecard"><span class="mono">GPU ${x.i}</span><div class="memtrack" title="${esc((x.memUsed / 1024).toFixed(1))}/${esc((x.memTotal / 1024).toFixed(0))} GB"><i style="width:${pct}%;background:${u.length ? colors[u[0]] : 'var(--muted)'}"></i></div><span class="mono">${esc((x.memUsed / 1024).toFixed(1))}/${esc((x.memTotal / 1024).toFixed(0))}G · ${x.util}%</span><span>${u.length ? esc(u.map(id => nameOf(profiles, id)).join(', ')) : `<span class="hint">${esc(t('idle'))}</span>`}</span></div>`; }).join('');
       } else if (isLive) {
-        who = by.map((h, i) => h && h.length ? `<span><i class="dot" style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colors[h[0].uid]};margin-right:4px;vertical-align:0"></i>GPU ${i}: ${esc(nameOf(profiles, h[0].uid))} <span class="mono">${Math.round((h[0].frac || 0) * 100)}%</span></span>` : '').join('');
+        who = by.map((h, i) => h && h.length ? `<span>GPU ${i}: ${h.map(x => `<i class="dot" style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colors[x.uid]};margin:0 4px 0 2px;vertical-align:0"></i>${esc(nameOf(profiles, x.uid))} <span class="mono">${x.hours}h</span>`).join(', ')}</span>` : '').join('');
       } else {
         who = active.map(r => `<span title="${esc(r.start)} → ${esc(r.end)}"><i class="dot" style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colors[r.uid]};margin-right:4px;vertical-align:0"></i>${esc(nameOf(profiles, r.uid))} ×${r.count}</span>`).join('');
       }
@@ -1108,29 +1109,41 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     const approved = reqs.filter(r => r.status === 'approved' && (!g || r.gpuId === g.id));
 
 
-    // timeline: from the agents' history when there is any (who was on each card each day), else from bookings
+    // timeline: from the agents' history when there is any, else from bookings
     const DW = 32;
-    let liveBars = null;
-    if (Object.values(state.live.hist).some(h => h && h.length)) {
-      liveBars = [];
+    const hasHist = Object.values(state.live.hist).some(h => h && h.length);
+    const wStart = state.tlStart, wEnd = addDays(wStart, state.tlDays - 1);
+    const winStartMs = parse(wStart).getTime(), winEndMs = parse(addDays(wEnd, 1)).getTime();
+    const xOf = (ms) => (ms - winStartMs) / 86400000 * DW;
+    // One segment = one person continuously on one card. Each sample stands for the 30 minutes after it;
+    // a person's segment ends at the first sample they are missing from, or at a reporting gap over 45 min.
+    const segs = [];
+    if (hasHist) {
+      const SLOT = 30 * 60000, GAP = 45 * 60000;
       for (const node of nodes) {
-        const days = {};
-        for (const smp of (state.live.hist[node.id] || [])) { const d = localDay(smp.at); if (d) days[d] = true; }
-        const perCard = {};
-        for (const d of Object.keys(days).sort()) { const dm = dayModel(node.id, d); dm.forEach((c, i) => { if (c && c.busy && c.top) (perCard[i] = perCard[i] || []).push({ day: d, uid: c.top, frac: c.busy / c.n }); }); }
-        for (const [i, list] of Object.entries(perCard)) {
-          let cur = null;
-          for (const e of list) {
-            if (cur && cur.uid === e.uid && addDays(cur.end, 1) === e.day) { cur.end = e.day; cur.fracs.push(e.frac); }
-            else { cur = { id: `l_${node.id}_${i}_${e.day}`, uid: e.uid, gpuId: node.id, count: 1, start: e.day, end: e.day, fracs: [e.frac], status: 'approved', purpose: '', slot: Number(i) }; liveBars.push(cur); }
+        const open = {};   // key card|uid -> segment
+        let prevT = null;
+        for (const smp of (state.live.hist[node.id] || [])) {
+          const tm = new Date(smp.at).getTime(); if (isNaN(tm)) continue;
+          if (prevT !== null && tm - prevT > GAP) for (const k of Object.keys(open)) delete open[k];
+          const seen = new Set();
+          for (const x of (smp.gpus || [])) {
+            if (!gpuBusy(x)) continue;
+            const ids = (x.users && x.users.length ? [...new Set(x.users.map(liveUid))] : ['~?']);
+            for (const uid of ids) {
+              const k = x.i + '|' + uid; seen.add(k);
+              if (open[k]) { open[k].t1 = tm + SLOT; open[k].mem += x.mem || 0; open[k].n++; }
+              else { open[k] = { gpuId: node.id, slot: x.i, uid, t0: tm, t1: tm + SLOT, mem: x.mem || 0, n: 1 }; segs.push(open[k]); }
+            }
           }
+          for (const k of Object.keys(open)) if (!seen.has(k)) delete open[k];
+          prevT = tm;
         }
       }
-      for (const b of liveBars) { state.slots[b.id] = [b.slot]; b.purpose = t('busyFrac', Math.round(b.fracs.reduce((a, c) => a + c, 0) / b.fracs.length * 100)); }
     }
-    const wStart = state.tlStart, wEnd = addDays(wStart, state.tlDays - 1);
-    const inWindow = (liveBars || approved).filter(r => r.start <= wEnd && r.end >= wStart);
-    $('sched-count').textContent = liveBars ? t('liveDays', Object.values(state.live.hist).reduce((m, h) => Math.max(m, new Set((h || []).map(x => localDay(x.at))).size), 0)) : (inWindow.filter(r => !r.isDefault).length ? t('approvedCount', inWindow.filter(r => !r.isDefault).length) : '');
+    const segsInWindow = segs.filter(g2 => g2.t1 > winStartMs && g2.t0 < winEndMs);
+    const inWindow = hasHist ? [] : approved.filter(r => r.start <= wEnd && r.end >= wStart);
+    $('sched-count').textContent = hasHist ? t('liveDays', Object.values(state.live.hist).reduce((m, h) => Math.max(m, new Set((h || []).map(x => localDay(x.at))).size), 0)) : (inWindow.filter(r => !r.isDefault).length ? t('approvedCount', inWindow.filter(r => !r.isDefault).length) : '');
     const colors = state.colors;
     let days = '';
     const weekends = [];
@@ -1140,13 +1153,14 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
       days += `<div class="d ${we ? 'we' : ''} ${d === TODAY ? 'today' : ''}"><span>${esc(t('dow')[(dt.getDay() + 6) % 7])}</span><b>${dt.getDate()}</b>${dt.getDate() === 1 || i === 0 ? `<span>${esc(t('monthsShort')[dt.getMonth()])}</span>` : ''}</div>`;
     }
     const todayIdx = daysBetween(wStart, TODAY);
-    const todayLine = todayIdx >= 0 && todayIdx < state.tlDays ? `<div class="todayline" style="left:${todayIdx * DW + DW / 2}px"></div>` : '';
+    const nowX = xOf(Date.now());
+    const todayLine = todayIdx >= 0 && todayIdx < state.tlDays ? `<div class="todayline" style="left:${hasHist ? nowX : todayIdx * DW + DW / 2}px"></div>` : '';
     let namesCol = `<div class="hdr"></div>`, rows = '';
     const ROW = 26;
     for (const node of nodes) {
       const bars = inWindow.filter(r => r.gpuId === node.id);
       // rows: one per physical card, plus overflow rows if approvals exceed the node
-      const maxIdx = bars.reduce((m, r) => Math.max(m, ...(state.slots[r.id] || [0])), node.cards - 1);
+      const maxIdx = Math.max(bars.reduce((m, r) => Math.max(m, ...(state.slots[r.id] || [0])), node.cards - 1), ...segsInWindow.filter(x => x.gpuId === node.id).map(x => x.slot));
       const cardRows = maxIdx + 1;
       namesCol += `<div class="node" style="height:${ROW}px"><b>${esc(node.name)}</b></div>`;
       for (let i = 0; i < cardRows; i++) namesCol += `<div class="card-row ${i >= node.cards ? 'over' : ''}"><span class="mono">GPU ${i}</span><small>${i >= node.cards ? esc(t('overAlloc')) : esc(node.model)}</small></div>`;
@@ -1162,18 +1176,28 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
           const half = mate ? (onRow.indexOf(b) < onRow.indexOf(mate) ? 'top' : 'bottom') : '';
           barsHTML += `<div class="bar ${b.uid === state.myId ? 'mine' : ''} ${b.share || b.preempt ? 'soft' : ''} ${half}" style="left:${s * DW + 2}px;width:${(e - s + 1) * DW - 4}px;background:${colors[b.uid]}" title="GPU ${i} · ${esc(label)} ×${b.count} · ${esc(b.start)} → ${esc(b.end)}${flags ? ' · ' + esc(flags) : ''}${mate ? ' · ' + esc(t('sharedWith', nameOf(profiles, mate.uid))) : ''}&#10;${esc(b.purpose)}">${esc(label)}${flags ? ' ·' : ''}</div>`;
         }
+        const onCard = segsInWindow.filter(x => x.gpuId === node.id && x.slot === i).sort((a2, c2) => a2.t0 - c2.t0);
+        for (const sg of onCard) {
+          const left = Math.max(0, xOf(sg.t0)), right = Math.min(state.tlDays * DW, xOf(sg.t1));
+          const w = Math.max(2, right - left);
+          const mate = onCard.find(o => o !== sg && o.t0 < sg.t1 && sg.t0 < o.t1);
+          const half = mate ? (onCard.indexOf(sg) < onCard.indexOf(mate) ? 'top' : 'bottom') : '';
+          const label = nameOf(profiles, sg.uid);
+          const tip = `GPU ${i} · ${label} · ${fmtTime(new Date(sg.t0).toISOString())} → ${fmtTime(new Date(sg.t1).toISOString())} · ${t('hoursN', Math.round((sg.t1 - sg.t0) / 360000) / 10)} · ~${(sg.mem / sg.n / 1024).toFixed(1)} GB${mate ? ' · ' + t('sharedWith', nameOf(profiles, mate.uid)) : ''}`;
+          barsHTML += `<div class="bar seg ${sg.uid === state.myId ? 'mine' : ''} ${half}" style="left:${left}px;width:${w}px;background:${colors[sg.uid] || 'var(--s-other)'}" title="${esc(tip)}">${w > 46 && !half ? esc(label) : ''}</div>`;
+        }
         rows += `<div class="row ${i >= node.cards ? 'over' : ''}" style="height:${ROW}px">${barsHTML}</div>`;
       }
     }
-    const legendIds = [...new Set(inWindow.map(r => r.uid))].sort();
-    const legend = legendIds.length ? `<div class="legend"><span><i style="background:var(--muted);background-image:repeating-linear-gradient(135deg,transparent 0 3px,rgba(255,255,255,.35) 3px 5px)"></i>${esc(t('tagShare'))} / ${esc(t('tagPreempt'))}</span>${legendIds.map(u => `<span><i style="background:${colors[u]}"></i>${esc(nameOf(profiles, u))}${u === state.myId ? ` (${esc(t('you'))})` : ''}</span>`).join('')}</div>` : '';
+    const legendIds = [...new Set((hasHist ? segsInWindow : inWindow).map(r => r.uid))].sort();
+    const legend = legendIds.length ? `<div class="legend">${hasHist ? `<span class="hint">${esc(t('segHint'))}</span>` : `<span><i style="background:var(--muted);background-image:repeating-linear-gradient(135deg,transparent 0 3px,rgba(255,255,255,.35) 3px 5px)"></i>${esc(t('tagShare'))} / ${esc(t('tagPreempt'))}</span>`}${legendIds.map(u => `<span><i style="background:${colors[u]}"></i>${esc(nameOf(profiles, u))}${u === state.myId ? ` (${esc(t('you'))})` : ''}</span>`).join('')}</div>` : '';
     $('sched-timeline').innerHTML = nodes.length ? `
       <div class="hint mono">${esc(I18N.en.months[parse(wStart).getMonth()])} ${parse(wStart).getFullYear()}</div>
       <div class="tl-wrap"><div class="tl" style="--dw:${DW}px;width:${150 + state.tlDays * DW}px">
         <div class="names">${namesCol}</div>
         <div class="track"><div class="days">${days}</div>${rows}${todayLine}</div>
       </div></div>
-      ${legend || `<div class="nodata">${esc(liveBars ? t('noSchedule') : t('noAgentTimeline'))}</div>`}` : `<div class="empty">${esc(t('noNodes'))}</div>`;
+      ${legend || `<div class="nodata">${esc(hasHist ? t('noSchedule') : t('noAgentTimeline'))}</div>`}` : `<div class="empty">${esc(t('noNodes'))}</div>`;
   }
   $('tl-nav').addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-shift]'); if (!b) return;
