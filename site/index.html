@@ -784,7 +784,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   }
   async function writeTargets(mutate, message) {
     for (let attempt = 0; attempt < 2; attempt++) {
-      let cur; try { cur = await readFile('targets.json'); } catch { cur = { sha: undefined, data: { targets: [] } }; }
+      let cur; try { cur = await readFile('targets.json'); } catch (e) { if (e.status !== 404) throw e; cur = { sha: undefined, data: { targets: [] } }; }
       const list = mutate((cur.data.targets || []).map(x => ({ ...x })));
       if (list === false) return false;
       try {
@@ -807,10 +807,10 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   }
   async function writeMembers(mutate, message) {
     for (let attempt = 0; attempt < 2; attempt++) {
-      let cur; try { cur = await readFile('members.json'); } catch { cur = { sha: undefined, data: { names: {} } }; }
+      let cur; try { cur = await readFile('members.json'); } catch (e) { if (e.status !== 404) throw e; cur = { sha: undefined, data: { names: {} } }; }
       const names = mutate({ ...(cur.data.names || {}) });
       try {
-        const body = { message, branch: 'main', content: b64enc(JSON.stringify({ names }, null, 2) + '\n') }; if (cur.sha) body.sha = cur.sha;
+        const body = { message, branch: 'main', content: b64enc(JSON.stringify({ ...cur.data, names }, null, 2) + '\n') }; if (cur.sha) body.sha = cur.sha;
         await gh(`/repos/${state.repo}/contents/members.json`, { method: 'PUT', body: JSON.stringify(body) });
         state.members = names; return true;
       } catch (e) { if (e.status !== 409 || attempt) throw e; }
