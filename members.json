@@ -12,5 +12,12 @@
     "huirong": "hrchai",
     "wei": "WeiHu9",
     "adelechinda": "arrdel"
+  },
+  "colors": {
+    "WeiHu9": "blue",
+    "hrchai": "green",
+    "prehoke": "gold",
+    "arrdel": "brown",
+    "xiaolong-shawn": "pink"
   }
 }

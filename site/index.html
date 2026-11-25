@@ -23,7 +23,8 @@
   --warn-soft: #fcefd3;
   --bad: #c43d3d;
   --bad-soft: #fbe3e3;
-  /* categorical (per person), validated for CVD separation on both surfaces */
+  /* person colours: far apart for normal vision (OKLab ΔE ≥ 21) and for red-green colour blindness (≥ 11) */
+  --p-blue: #1f6fd1; --p-green: #13a36b; --p-gold: #e3b300; --p-brown: #8a5a2b; --p-pink: #f472b6; --p-teal: #0b8f9c; --p-purple: #7b3fe0; --p-olive: #7a8f12; --ink-on-light: #16202e;
   --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948; --s-other: #8a93a3;
   --font-body: "IBM Plex Sans", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
@@ -34,6 +35,7 @@
     --bg: #11161e; --surface: #1a2130; --surface-2: #232c3d; --fg: #e8edf5; --muted: #98a5b8; --line: #2f3a4e;
     --accent: #9d8bf0; --accent-fg: #11161e; --accent-soft: #2a2748;
     --ok: #4cc27d; --ok-soft: #173627; --warn: #e5a53a; --warn-soft: #3c2d12; --bad: #ef7373; --bad-soft: #3e1f1f;
+    --p-blue: #4a8ff0; --p-green: #1fb57a; --p-gold: #e9bd1c; --p-brown: #b07a45; --p-pink: #f58bc4; --p-teal: #22a8b4; --p-purple: #9a73f0; --p-olive: #9aad2a;
     --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --s-other: #6b7585;
     color-scheme: dark;
   }
@@ -42,6 +44,7 @@
   --bg: #11161e; --surface: #1a2130; --surface-2: #232c3d; --fg: #e8edf5; --muted: #98a5b8; --line: #2f3a4e;
   --accent: #9d8bf0; --accent-fg: #11161e; --accent-soft: #2a2748;
   --ok: #4cc27d; --ok-soft: #173627; --warn: #e5a53a; --warn-soft: #3c2d12; --bad: #ef7373; --bad-soft: #3e1f1f;
+  --p-blue: #4a8ff0; --p-green: #1fb57a; --p-gold: #e9bd1c; --p-brown: #b07a45; --p-pink: #f58bc4; --p-teal: #22a8b4; --p-purple: #9a73f0; --p-olive: #9aad2a;
   --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767; --s-other: #6b7585;
   color-scheme: dark;
 }
@@ -229,7 +232,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .check { flex-direction: row; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--fg); cursor: pointer; }
 .check input { width: auto; margin-top: 3px; }
 .pill.tag { background: var(--accent-soft); color: var(--accent); }
-.tl .bar.seg { border-radius: 2px; padding: 0 4px; box-shadow: none; border-right: 1px solid var(--surface); }
+.tl .bar.seg { border-radius: 2px; padding: 0 4px; box-shadow: none; border-right: 2px solid var(--surface); }
 .tl .bar.top { height: 9px; line-height: 9px; font-size: 9px; top: 3px; }
 .tl .bar.bottom { height: 9px; line-height: 9px; font-size: 9px; top: 14px; }
 .tl .bar.soft { background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(255,255,255,.28) 6px 9px); }
@@ -610,10 +613,20 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     return true;
   }
   // Stable color per person: ids sorted, first 8 get a categorical slot, the rest share a neutral.
+  const PERSON_COLORS = ['blue', 'green', 'gold', 'brown', 'pink', 'teal', 'purple', 'olive'];
+  const LIGHT_FILLS = new Set(['gold', 'pink']);   // these take dark text
   function colorMap(uids) {
-    const sorted = [...new Set(uids)].sort();
-    const m = {};
-    sorted.forEach((u, i) => { m[u] = i < 8 ? `var(--s${i + 1})` : 'var(--s-other)'; });
+    const m = {}; state.inks = {};
+    const fixed = state.memberColors || {};
+    const used = new Set(Object.values(fixed));
+    const free = PERSON_COLORS.filter(c => !used.has(c));
+    const set = (u, c) => { m[u] = `var(--p-${c})`; state.inks[u] = LIGHT_FILLS.has(c) ? 'var(--ink-on-light)' : '#fff'; };
+    for (const u of [...new Set(uids)].sort()) {
+      if (u.startsWith('~')) { m[u] = 'var(--s-other)'; state.inks[u] = '#fff'; continue; }
+      if (fixed[u] && PERSON_COLORS.includes(fixed[u])) set(u, fixed[u]);
+      else if (free.length) set(u, free.shift());
+      else { m[u] = 'var(--s-other)'; state.inks[u] = '#fff'; }
+    }
     return m;
   }
   // Card assignment: every approved request on a node gets fixed card indices for its whole window.
@@ -757,6 +770,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     const [b, n, m, a] = await Promise.all([readFile('bookings.json'), readFile('nodes.json'), readFile('members.json').catch(() => ({ data: { names: {} } })), readFile('assignments.json').catch(() => ({ data: { assignments: [] } }))]);
     state.members = (m.data && m.data.names) || {};
     state.linux = (m.data && m.data.linux) || {};
+    state.memberColors = (m.data && m.data.colors) || {};
     state.assignments = (a.data && a.data.assignments) || [];
     try { state.rules = (await readFile('policy.json')).data; } catch { state.rules = null; }
     try { state.targets = (await readFile('targets.json')).data.targets || []; } catch { state.targets = []; }
@@ -996,7 +1010,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     let html = t('dow').map(d => `<div class="dow">${esc(d)}</div>`).join('');
     for (let i = 0; i < 42; i++) {
       const day = addDays(gridStart, i);
-      const chips = rows.filter(r => r.deadline === day).map(r => `<div class="chip" style="background:${state.colors[r.uid] || 'var(--s-other)'}" title="${esc(nameOf(profiles, r.uid))} · ${esc(r.venue || '')}${r.note ? ' · ' + esc(r.note) : ''}"><b>${esc(nameOf(profiles, r.uid).split(' ')[0])}</b>${r.venue ? ' · ' + esc(r.venue) : ''}</div>`).join('');
+      const chips = rows.filter(r => r.deadline === day).map(r => `<div class="chip" style="background:${state.colors[r.uid] || 'var(--s-other)'};color:${(state.inks || {})[r.uid] || '#fff'}" title="${esc(nameOf(profiles, r.uid))} · ${esc(r.venue || '')}${r.note ? ' · ' + esc(r.note) : ''}"><b>${esc(nameOf(profiles, r.uid).split(' ')[0])}</b>${r.venue ? ' · ' + esc(r.venue) : ''}</div>`).join('');
       html += `<div class="day ${day.slice(0, 7) === state.tcalMonth ? '' : 'other'} ${day === TODAY ? 'today' : ''}"><span class="n">${parse(day).getDate()}</span>${chips}</div>`;
     }
     $('tcal-grid').innerHTML = html;
@@ -1184,7 +1198,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
           const half = mate ? (onCard.indexOf(sg) < onCard.indexOf(mate) ? 'top' : 'bottom') : '';
           const label = nameOf(profiles, sg.uid);
           const tip = `GPU ${i} · ${label} · ${fmtTime(new Date(sg.t0).toISOString())} → ${fmtTime(new Date(sg.t1).toISOString())} · ${t('hoursN', Math.round((sg.t1 - sg.t0) / 360000) / 10)} · ~${(sg.mem / sg.n / 1024).toFixed(1)} GB${mate ? ' · ' + t('sharedWith', nameOf(profiles, mate.uid)) : ''}`;
-          barsHTML += `<div class="bar seg ${sg.uid === state.myId ? 'mine' : ''} ${half}" style="left:${left}px;width:${w}px;background:${colors[sg.uid] || 'var(--s-other)'}" title="${esc(tip)}">${w > 46 && !half ? esc(label) : ''}</div>`;
+          barsHTML += `<div class="bar seg ${sg.uid === state.myId ? 'mine' : ''} ${half}" style="left:${left}px;width:${w}px;background:${colors[sg.uid] || 'var(--s-other)'};color:${(state.inks || {})[sg.uid] || '#fff'}" title="${esc(tip)}">${w > 46 && !half ? esc(label) : ''}</div>`;
         }
         rows += `<div class="row ${i >= node.cards ? 'over' : ''}" style="height:${ROW}px">${barsHTML}</div>`;
       }
